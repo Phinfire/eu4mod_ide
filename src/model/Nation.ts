@@ -1,24 +1,35 @@
+import { Constants } from "../Constants";
 import { Game } from "./Game";
-import { ILocalizationProvider } from "./ILocalizationProvider";
-import { Language } from "./Language";
+import { IHasImage } from "./IHasImage";
+import { IHasLocalisableName } from "./IHasName";
+import { INation } from "./INation";
+import { AbstractLocalisationUser } from "./localisation/AbstractLocalisationUser";
+import { ILocalisationProvider } from "./localisation/ILocalizationProvider";
+import { Language } from "./localisation/Language";
 import { NationalIdeaSet } from "./NationalIdeaSet";
 
-export class Nation {
+export class Nation implements INation {
 
-    constructor(private tag: string, private ideas: NationalIdeaSet, private localizationProvider: ILocalizationProvider) {
+    constructor(private tag: string, private ideas: NationalIdeaSet) {
 
     }
 
-    getFlagUrl() {
-        return `http://codingafterdark.de/ide/gfx/flags/${this.tag}.png`;
-    }
-
-    getNameinLanguage(language: Language) {
-        return this.localizationProvider.localize(this.tag, language);
+    getImageUrl() {
+        return Constants.getGfx("flags/" + this.tag + ".png");
     }
     
-    getAdjectiveinLanguage(language: Language) {
-        return this.localizationProvider.localize(`${this.tag}_ADJ`, language);
+    public makeImage() {
+        const img = document.createElement("img");
+        img.src = this.getImageUrl();
+        return img;
+    }
+
+    getName(localisationUser: AbstractLocalisationUser) {
+        return localisationUser.localise(this.tag);
+    }
+    
+    getAdjectiveinLanguage(localisationUser: AbstractLocalisationUser) {
+        return localisationUser.localise(`${this.tag}_ADJ`);
     }
 
     getTag() {

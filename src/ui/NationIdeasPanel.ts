@@ -1,16 +1,24 @@
 import { Constants } from "../Constants";
+import { AbstractLocalisationUser } from "../model/localisation/AbstractLocalisationUser";
+import { Idea } from "../model/Idea";
 import { NationalIdeaSet } from "../model/NationalIdeaSet";
+import { TooltipManager } from "./TooltipManager";
+import { Nation } from "../model/Nation";
+import { setupCoatOfArmsPolygonClipPath } from "../utils";
 
-export class NationIdeasPanel {
+export class NationIdeasPanel extends AbstractLocalisationUser {
 
     private panel: HTMLDivElement;
-    private cellImages: HTMLImageElement[] = [];
+    private tableRows: HTMLTableRowElement[] = [];
     private flagImage: HTMLImageElement;
     private titlePanel: HTMLDivElement;
+    private namePanel: HTMLDivElement;
+    private tagPanel: HTMLDivElement;
 
     private modifiableIdeaSet: NationalIdeaSet | null = null;
 
     constructor() {
+        super();
         this.panel = document.createElement("div");
         this.panel.classList.add("national-ideas-panel");
         const upperPanel = document.createElement("div");
@@ -32,23 +40,33 @@ export class NationIdeasPanel {
 
         upperPanel.classList.add("national-ideas-panel-top");
         this.flagImage = document.createElement("img");
-        this.setupCoatOfArmsPolygonClipPath(this.flagImage);
-        this.flagImage.src = Constants.ROOT_GFX_URL + "flags/MLC.png";
+        setupCoatOfArmsPolygonClipPath(this.flagImage);
+        this.flagImage.src = Constants.getGfx("flags/nationalist_rebels.png");
         flagPanel.appendChild(this.flagImage);
+        this.namePanel = document.createElement("div");
+        flagPanel.appendChild(this.namePanel);
+        this.tagPanel = document.createElement("div");
+        flagPanel.appendChild(this.tagPanel);
+        this.namePanel.classList.add("nation-ideas-panel-name");
+        this.tagPanel.classList.add("nation-ideas-panel-tag");
+
+        const emptyIdeaMap = new Map<string, string>();
+        emptyIdeaMap.set("ae_impact", "0");
+        const emptyIdea = new Idea("place_holder", emptyIdeaMap);
 
         const tradtionsTable = document.createElement("table");
         tablePanel.appendChild(tradtionsTable);
         const traditionsRow = document.createElement("tr");
         tradtionsTable.appendChild(traditionsRow);
         for (let i = 0; i < 2; i++) {
-            this.cellImages.push(this.makeImageTableCell(Constants.ROOT_GFX_URL + "ideas/ae_impact.png", traditionsRow));
+            this.makeImageTableCell(emptyIdea, traditionsRow, false);
         }
 
         const table = document.createElement("table");
         const row = document.createElement("tr");
 
         for (let i = 0; i < 7; i++) {
-            this.cellImages.push(this.makeImageTableCell(Constants.ROOT_GFX_URL + "ideas/ae_impact.png", row));
+            this.makeImageTableCell(emptyIdea, row, false);
         }
         table.appendChild(row);
         tablePanel.appendChild(table);
@@ -57,21 +75,20 @@ export class NationIdeasPanel {
         tablePanel.appendChild(ambitionsTable);
         const ambitionsRow = document.createElement("tr");
         ambitionsTable.appendChild(ambitionsRow);
-        this.cellImages.push(this.makeImageTableCell(Constants.ROOT_GFX_URL + "ideas/ae_impact.png", ambitionsRow));
+        this.makeImageTableCell(emptyIdea, ambitionsRow, false);
         const titles = ["Traditions", "Ideas", "Ambition"];
-        const tables = [tradtionsTable, table, ambitionsTable];
         tradtionsTable.style.marginRight = "32px";
         ambitionsTable.style.marginLeft = "32px";
+        const subTables = [tradtionsTable, table, ambitionsTable];
         for (let i = 0; i < 3; i++) {
             const footer = document.createElement("tr");
             const footerCell = document.createElement("th");
             footerCell.textContent = titles[i];
             footerCell.classList.add("nation-ideas-panel-footer");
             footer.appendChild(footerCell);
-            tables[i].appendChild(footer);
+            subTables[i].appendChild(footer);
         }
-        table
-
+        this.tableRows = subTables.map(table => table.firstChild as HTMLTableRowElement);
         const contentPanel = document.createElement("div");
         this.panel.appendChild(contentPanel);
     }
@@ -80,21 +97,28 @@ export class NationIdeasPanel {
         return this.panel;
     }
 
-    public show(ideas: NationalIdeaSet, name: string, flagUrl: string) {
+    public show(ideas: NationalIdeaSet, nation: Nation, flagUrl: string) {
         this.modifiableIdeaSet = ideas;
         this.flagImage.src = flagUrl;
-        this.titlePanel.textContent = name + " Ideas";
-        const ideaAray = [ideas.getFirstTradition(), ideas.getSecondTradition()].concat(ideas.getIdeas()).concat([ideas.getAmbition()]);
-        for (let i = 0; i < ideaAray.length; i++) {
-            const firstModifierName = ideaAray[i].getModifierAssignments().keys().next().value;
-            this.cellImages[i].src = Constants.ROOT_GFX_URL + "ideas/" + firstModifierName + ".png";
-        }
+        this.namePanel.innerHTML = nation.getName(this);
+        this.tagPanel.innerHTML = nation.getTag().toUpperCase();
+        this.titlePanel.textContent = nation.getAdjectiveinLanguage(this) + " Ideas";
+        const traditions = [ideas.getFirstTradition(), ideas.getSecondTradition()];
+        const ideaArr = ideas.getIdeas();
+        this.tableRows.forEach(row => row.innerHTML = "");
+        traditions.forEach(tradition => {
+            this.makeImageTableCell(tradition, this.tableRows[0], false);
+        });
+        ideaArr.forEach(idea => {
+            this.makeImageTableCell(idea, this.tableRows[1], true);
+        });
+        this.makeImageTableCell(ideas.getAmbition(), this.tableRows[2], false);
     }
 
-    private makeImageTableCell(imageUrl: string, row: HTMLTableRowElement) {
+    private makeImageTableCell(idea: Idea, row: HTMLTableRowElement, descAndTitle: boolean) {
         const cell = document.createElement("td");
         const image = document.createElement("img");
-        image.src = imageUrl;
+        image.src = idea.getImageUrl();
         image.classList.add("nation-ideas-panel-img");
         cell.style.width = "64px";
         cell.style.height = "64px";
@@ -103,36 +127,15 @@ export class NationIdeasPanel {
         });
         cell.appendChild(image);
         row.appendChild(cell);
-        return image;
-    }
 
-    private setupCoatOfArmsPolygonClipPath(flag: HTMLImageElement) {
-        const leftRightCutoff = 0;
-        const startCurve = 50;
-        const halfCurveSteps = 10;
-        const clipPolyPoints = [];
-        const halfWidth = 50 - leftRightCutoff; 
-        clipPolyPoints.push({x: leftRightCutoff, y: 0});
-        clipPolyPoints.push({x: 100 - leftRightCutoff, y: 0});
-        clipPolyPoints.push({x: 100 - leftRightCutoff, y: startCurve});
-        const circleCenter = {x: 50, y: startCurve};
-        const circleRadius = Math.min(halfWidth, 100 - startCurve);
-        for (let i = 1; i <= halfCurveSteps; i++) {
-            //const y = startCurve + i * (100 - startCurve) / halfCurveSteps;
-            //const x = 100 - leftRightCutoff - Math.pow(i / halfCurveSteps,4) * halfWidth;
-            const y = circleCenter.y + Math.sin(i / halfCurveSteps * Math.PI / 2) * circleRadius;
-            const x = circleCenter.x + Math.cos(i / halfCurveSteps * Math.PI / 2) * circleRadius
-            clipPolyPoints.push({x: x, y: y});
+        const tooltipManager = TooltipManager.getInstance();
+        let tooltip = Array.from(idea.getModifierAssignments().entries()).map(entry => "<b>" + this.localise(entry[0]) + "</b>: " + entry[1]).join("<br>");
+        if (descAndTitle) {
+            tooltip = idea.getName(this) + "<br><br>" + tooltip + "<br><br>" + idea.getDescription(this);
+            image.onmousemove = (event) => tooltipManager.showTooltip(event, tooltip.trim());
         }
-        const length = clipPolyPoints.length;
-        for (let i = length -1 ; i > 1; i--) {
-            const partner: { x: number, y: number } = clipPolyPoints[i];
-            clipPolyPoints.push({x: (100-partner.x), y: partner.y});
-        }
-        //clipPolyPoints.push({x: leftRightCutoff, y: startCurve});
-        flag.style.clipPath = "polygon(" + clipPolyPoints.map(p => p.x + "% " + p.y + "%").join(",") + ")";
-        flag.addEventListener("dragstart", (event) => {
-            event.preventDefault();
-        });
+        image.onmousemove = (event) => tooltipManager.showTooltip(event, tooltip.trim());
+        image.onmouseleave = () => tooltipManager.hideTooltip();
+        return image;
     }
 }

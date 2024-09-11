@@ -4,14 +4,16 @@
     --main-color: rgb(30, 30, 30);
     --font-color: rgb(220, 220, 157);
     --big-font-size: 24px;
+    --medium-font-size: 16px;
 }
 
 * {
     font-family: var(--font-family);
     font-weight: 400;
     font-style: normal;
-    font-size: 16px;
+    font-size: var(--medium-font-size);
     color: var(--font-color);
+    /*cursor: url("http://codingafterdark.de/ide/gfx/normal.png"), auto;*/
 }
 
 img {
@@ -37,32 +39,59 @@ body {
     flex-direction: row;
     justify-content: center;
     align-items: center;
-    height: 800px;
     border: 1px solid var(--font-color);
 }
 
 .nation-table-panel {
-    overflow-y: scroll;
-    width: 300px;
+    width: 100%;
     height: 100%;
+    padding-left: var(--big-font-size);
+    padding-right: var(--big-font-size);
     display: flex;
     flex-direction: column;
     align-items: center;
+    background-color: var(--background-color);
+}
+
+.nation-table-panel-content {
+    width: 100%;
+    height: 100%;
+    overflow-y: scroll;
+    overflow-x: hidden;
 }
 
 .nation-table-panel-top {
     width: 100%;
+    height: 40px;
+    padding: 0px 4px;
     display: flex;
     flex-direction: row;
-    justify-content: center;
+    justify-content: flex-start;
     align-items: center;
 }
 
+.nation-table-panel-top-title {
+    user-select: none;
+    min-width: 120px;
+}
+
 .nation-table-panel-top-input {
-    width: 50%;
-    height: 24px;
+    width: 200px;
+    height: var(--medium-font-size);
     border: none;
+    opacity: 0.8;
     background-color: var(--main-color);
+}
+
+.nation-table-panel-top-refresh {
+    user-select: none;
+    font-weight: bold;
+    cursor: pointer;
+    height: var(--medium-font-size);
+    width: var(--medium-font-size);
+    display: flex;
+    justify-content: center;
+    align-items: center;
 }
 
 .nation-table-panel-top-input:focus {
@@ -70,7 +99,7 @@ body {
 }
 
 .nation-table {
-    width: 90%;
+    width: 100%;
 }
 
 .nation-table > thead {
@@ -82,21 +111,20 @@ body {
     height: 0px;
 }
 
-.nation-table > tbody > tr > td > img {
+.nation-table-item-img {
     border: 2px solid var(--main-color);
 }
-.nation-table > tbody > tr > td > img:hover {
+.nation-table-item-img:hover {
     filter: brightness(1.5);
     border: 2px solid var(--font-color);
 }
-
-.nation-table > tbody > tr > td > img:active {
+.nation-table-item-img:active {
     filter: brightness(0.5);
     border: 2px solid var(--font-color);
 }
 
 .national-ideas-panel {
-    height: 100%;
+    height: 800px;
     width: 1100px;
     margin: auto;
     display: flex;
@@ -107,7 +135,7 @@ body {
 }
 
 .national-ideas-panel-top {
-    height: 200px;
+    height: 300px;
     width: calc(100% - 32px);
     display: flex;
     flex-direction: row;
@@ -119,13 +147,22 @@ body {
 }
 
 .national-ideas-panel-top-left {
-    height: calc(100% - 0px);
-    width: 200px;
+    height: 100%;
+    width: 250px;
     padding-top: 26px;
     display: flex;
     flex-direction: column;
     justify-content: flex-start;
     align-items: center;
+}
+
+.national-ideas-panel-top-left > div {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    user-select: none;
 }
 
 .national-idea-panel-top-right {
@@ -140,12 +177,12 @@ body {
 
 .national-ideas-panel-top-title {
     width: 100%;
-    height: 50px;
-    font-size: var(--big-font-size);
+    height: calc(2*var(--medium-font-size));
+    font-size: var(--medium-font-size);
     display: flex;
     align-items: center;
     user-select: none;
-    padding-left: 16px;
+    padding-left: calc(0.3 * var(--medium-font-size));
 }
 
 .national-ideas-panel-top-content {
@@ -165,8 +202,23 @@ body {
     padding: 0px;
 }
 
+.nation-ideas-panel-name {
+    font-size: calc(1 * var(--big-font-size));
+    height: var(--big-font-size);
+    padding-top: calc(0.75 * var(--big-font-size));
+    padding-bottom: calc(0.25 * var(--big-font-size));
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.nation-ideas-panel-tag {
+    font-size: calc(0.5 * var(--big-font-size));
+    height: var(--big-font-size);
+}
+
 .nation-ideas-panel-img:hover {
-    filter: brightness(1.5);
+    filter: brightness(1.2);
 }
 
 .nation-ideas-panel-img:active {
@@ -178,4 +230,16 @@ body {
     padding-left: 6px;
     text-align: left;
     user-select: none;
+}
+
+.tooltip {
+    position: absolute;
+    background-color: #333;
+    color: #fff;
+    padding: 5px;
+    border-radius: 4px;
+    opacity: 0;
+    transition: opacity 0.3s;
+    pointer-events: none;
+    max-width: 400px;
 }
