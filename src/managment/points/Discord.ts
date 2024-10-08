@@ -15,6 +15,7 @@ interface IMyDiscordMessage {
 
 export class Discord {
 
+    //private rootUrl: string = "http://localhost:8081/api/";
     private rootUrl: string = "http://codingafterdark.de:8081/api/";
 
     private cachedDiscordUsers: Map<string, DiscordUser> = new Map<string, DiscordUser>();
@@ -25,23 +26,20 @@ export class Discord {
 
     public async reImportFromDiscord(nationGuesser: Guesser, game: Game) { //TODO: number matches are too permissive
         const msg = await new Discord().getLastMessages();
-        const perMessageResults = msg.messages.slice(0,2).map((message) => {
+        const perMessageResults = msg.messages.slice(0,1).map((message) => {
             const preResult : {nationAlias: string, playerId: string, points: number}[] = [];
-            message.content.split("\n").map((line: string) => line.trim()).filter((line: string)  => line.length > 0 && line.indexOf(".") == -1).forEach((line: string) => {
-                const numberCandiates = line.match(/[\d\+= ]+/); 
+            message.content.split("\n").map((line: string) => line.trim()).filter((line: string) => line.length > 0 && line.indexOf(".") == -1).forEach((line: string) => {
                 const discordMention = line.match(/<@!?\d+>/);
                 const nationName = line.match(/[A-Za-zÄÖÜäöüß]+/);
-                if (numberCandiates && discordMention && nationName && numberCandiates.length == 1 && discordMention.length == 1 && nationName.length == 1) {
-                    const points = resolveAmbigousPointExpression(numberCandiates[0]);
+                if (discordMention && nationName) {
                     const nationAlias = nationName[0];
                     const playerId = discordMention[0].substring(2, discordMention[0].length - 1);
+                    const lineWithoutNationAndName = line.replace(nationName[0], "").replace(discordMention[0], "").trim();
+                    if (lineWithoutNationAndName.length == 0) {
+                        preResult.push({nationAlias: nationAlias, playerId: playerId, points: 6});
+                    }
+                    const points = resolveAmbigousPointExpression(lineWithoutNationAndName);
                     preResult.push({nationAlias: nationAlias, playerId: playerId, points: points});
-                } else if (numberCandiates && nationName && numberCandiates.length == 1 && nationName.length == 1) {
-                    const points = resolveAmbigousPointExpression(numberCandiates[0]);
-                    const nationAlias = nationName[0];
-                    preResult.push({nationAlias: nationAlias, playerId: new Discord().getNewNoUserUser().getId(), points: points});
-                } else {
-                    console.log("SADGE: " + line);
                 }
             });
             preResult.sort((a, b) => a.nationAlias.localeCompare(b.nationAlias));
@@ -64,7 +62,19 @@ export class Discord {
             console.log(result.length + "/" + preResult.length + " entries imported");
             return result;
         });
-        return perMessageResults[1];
+        return perMessageResults[0];
+    }
+
+    public async importUsers() {
+        const users = await fetch(this.rootUrl + "users").then(response => response.json());
+        const userMap = new Map<string, DiscordUser>();
+        for (let key in users) {
+            const userData = users[key];
+            const avatarUrl = userData.avatarUrl ? userData.avatarUrl : null;
+            userMap.set(key, new DiscordUser(userData.effectiveName, key, avatarUrl));
+        }
+        this.cachedDiscordUsers = userMap;
+        return userMap;
     }
 
     public getLastMessages() : Promise<{messages: IMyDiscordMessage[], users: Map<string, DiscordUser>}> {
@@ -78,7 +88,8 @@ export class Discord {
             const users = new Map<string, DiscordUser>();
             for (let key in rawusers) {
                 const userData = rawusers[key];
-                users.set(key, new DiscordUser(userData.effectiveName, key, userData.avatarUrl));
+                const avatarUrl = userData.avatarUrl ? userData.avatarUrl : null;
+                users.set(key, new DiscordUser(userData.effectiveName, key, avatarUrl));
             }
             messages.sort((a: IMyDiscordMessage, b: IMyDiscordMessage) => {
                 return b.timestamp.localeCompare(a.timestamp);
@@ -92,10 +103,14 @@ export class Discord {
     }
 
     public getNewNoUserUser() : DiscordUser {
-        return new DiscordUser("???", "-1", Constants.getGfx("flags/REB.png"));
+        return new DiscordUser("???", "-1", Constants.getGfx("flags/REB.webp"));
     }
 
     public static isNoUser(userID: string) : boolean {
         return userID === "-1";
+    }
+
+    public getCachedDiscordUsers() : Map<string, DiscordUser> {
+        return this.cachedDiscordUsers;
     }
 }

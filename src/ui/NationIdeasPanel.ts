@@ -41,7 +41,7 @@ export class NationIdeasPanel extends AbstractLocalisationUser {
         upperPanel.classList.add("national-ideas-panel-top");
         this.flagImage = document.createElement("img");
         setupCoatOfArmsPolygonClipPath(this.flagImage);
-        this.flagImage.src = Constants.getGfx("flags/nationalist_rebels.png");
+        this.flagImage.src = Constants.getGfx("flags/nationalist_rebels.wepb");
         flagPanel.appendChild(this.flagImage);
         this.namePanel = document.createElement("div");
         flagPanel.appendChild(this.namePanel);

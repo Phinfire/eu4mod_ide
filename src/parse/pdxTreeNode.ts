@@ -94,4 +94,20 @@ export class PDXFileTreeNode {
         
         return result.map((line) => " ".repeat(depth * 4) + line);
     }
+
+    public hasNoOtherDirectOrIndirectKeyValueLeavesThan(key: string) {
+        if (this.keyValueLeaves.size > 1) {
+            return false;
+        }
+        if (this.keyValueLeaves.size == 1 && !this.keyValueLeaves.has(key)) {
+            return false;
+        }
+        for (let child of this.children.values()) {
+            if (!child.hasNoOtherDirectOrIndirectKeyValueLeavesThan(key)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
 }

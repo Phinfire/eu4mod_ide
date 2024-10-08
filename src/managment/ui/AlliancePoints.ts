@@ -1,6 +1,6 @@
-import { resolveAmbigousPointExpression, setupCoatOfArmsPolygonClipPath } from "../../utils";
+import { getCircularPolygonClipPath, getCoatOfArmsPolygonClipPath, getCookie, resolveAmbigousPointExpression, setCookie, setupCoatOfArmsPolygonClipPath } from "../../utils";
 import { Discord } from "../points/Discord";
-import { Entry } from "../points/Entry";
+import { Entry, SendableEntry } from "../points/Entry";
 import { Guesser } from "../INationGuesser";
 import { Nation } from "../../model/Nation";
 import { ImageSelectionTable } from "../../ui/ImageSelectionTable";
@@ -12,165 +12,138 @@ import { ColonialRegion } from "../../model/ColonialRegion";
 import { DiscordUser } from "../points/DiscordUser";
 import { WebSocketWrapper } from "../WebsocketWrapper";
 import { OverrideNation } from "../../model/OverrideNation";
+import { ITabApp } from "../../ui/ITabApp";
+import { ImageUtil } from "../../util/ImageUtil";
 
-const DEFAULT_POINTS = 1;
-
-enum MessageType {
-    CHECKIN = "checkin", // send credentials, should never be received
-    CHANGE_ENTRY = "change",
-    ADD_ENTRY = "add",
-    REMOVE_ENTRY = "remove",
-
-    REQUESTING_DATA = "requestData",
-    DATA_DELIVERY = "sendData"
+enum CheckinStatus {
+    NONE,
+    OK,
+    FAIL,
+    SERVER_CLOSED
 }
 
-export class AlliancePoints {
+enum MessageType {
+    CHECKIN = "checkin", // send credentials, should never be received by client
+    REQUESTING_DATA = "request",
+    DATA_DELIVERY = "delivery",
+    DISCORD_DATA = "discord", // TODO:
+    CHECKIN_OK = "checkinok",
+    CHECKIN_FAIL = "checkinfail"
+}
+
+export class AlliancePoints implements ITabApp {
 
     private comparator  = (a: Entry, b: Entry) => b.getPoints() - a.getPoints();
     private perColComparator = new Map<HTMLDivElement, ((e1: Entry, e2: Entry) => number)>();
     private filterDirection = 1;
     private main: HTMLDivElement;
+    private pointsWrapper: HTMLDivElement;
     private locUser: AbstractLocalisationUser;
     private entries: Entry[] = [];
 
-    private pw: string = "dev";
-    private lobbyID: string = "dev";
-    private myID: string;
-    private cachedDiscordUsers: Map<string, DiscordUser> = new Map();
+    private pw: string;
+    private lobbyID: string;
     private cachedNationTable: ImageSelectionTable<Nation> | null = null;
 
+    private discord = new Discord();
+
+    private wsWrapper: WebSocketWrapper;
+    private statusIndicator: (status: CheckinStatus) => void = () => {};
+
     constructor(socketUrl: string, private locProvider: ILocalisationProvider, private nationGuesser: Guesser, private game: Game) {
-        this.myID = performance.now().toString()  + Math.random().toString();
+        this.pointsWrapper = document.createElement('div');
+        this.pointsWrapper.classList.add("points-wrapper");
+
         this.locUser = new class extends AbstractLocalisationUser  {
         };
         this.locUser.setLocalisationProvider(locProvider);
         this.main = document.createElement('div');
         const apThis = this;
         const ws = new WebSocket(socketUrl);
-        const wsWrapper = new WebSocketWrapper(null, (wsWrapper: WebSocketWrapper) => {
-            wsWrapper.sendMessage(JSON.stringify({type: MessageType.CHECKIN, lobbyID: apThis.lobbyID, pw: apThis.pw}));
-            apThis.setupUI(wsWrapper);
+        
+        const initId = getCookie("ap_id");
+        const initPw = getCookie("ap_pw");
+        if (initId != null && initPw != null) {
+            this.lobbyID = initId
+            this.pw = initPw;
+        } else {
+            this.lobbyID = "";
+            this.pw = "";
+        }
+        this.discord.importUsers().then((users) => {
+                
+        });
+        this.wsWrapper = new WebSocketWrapper(ws, (wsWrapper: WebSocketWrapper) => {
+            apThis.setupUI();
         });
     }
 
-    private setupUI(ws: WebSocketWrapper) {
+    getPanel(): HTMLDivElement {
+        return this.pointsWrapper;
+    }
+
+    // input: id, pw,
+    // TODO: bypass localization via countries.txt
+    private setupUI() {
         const thisAp = this;
-        const wrapper = document.getElementsByClassName('app-wrapper')[0];
-        wrapper.innerHTML = "";
-        const pointsWrapper = document.createElement('div');
         const tableHeader = document.createElement('div');
         const headerheader = document.createElement('div');
         headerheader.classList.add("points-table-top");
-
-        const importFromDiscord = document.createElement("div");	
-        importFromDiscord.textContent = "🡓DC";
-        headerheader.appendChild(importFromDiscord);
-        const askServerForData = document.createElement("div");
-        askServerForData.textContent = "🡓"
-        headerheader.appendChild(askServerForData);
-
-        const addEntryButton = document.createElement("div");
-        addEntryButton.textContent = "➕";
-        headerheader.appendChild(addEntryButton);
-
-        const addColonialEntryButton = document.createElement("div");
-        addColonialEntryButton.textContent = "➕🏝️";
-        headerheader.appendChild(addColonialEntryButton);
-
-        const exportToClipboard = document.createElement("div");
-        exportToClipboard.textContent = "🡑📋"
-        headerheader.appendChild(exportToClipboard);
+        headerheader.appendChild(this.setupInputs());
 
         tableHeader.appendChild(headerheader);
         tableHeader.classList.add("points-table-header");
-        pointsWrapper.appendChild(tableHeader);
+        this.pointsWrapper.appendChild(tableHeader);
         const headerRow = this.buildRowStructure(true);
         this.perColComparator.set(headerRow.pointsPanel, (e1, e2) => e1.getPoints() - e2.getPoints());
-        this.perColComparator.set(headerRow.namePanel, (e1, e2) => e1.getNation().getName(this.locUser).localeCompare(e2.getNation().getName(this.locUser)));
+        this.perColComparator.set(headerRow.namePanel, (e1, e2) => e1.getNation().getAlias().localeCompare(e2.getNation().getAlias()));
         this.perColComparator.set(headerRow.playerPanel, (e1, e2) => e1.getPlayer().getName().localeCompare(e2.getPlayer().getName()));
         tableHeader.appendChild(headerRow.row);
-        wrapper.appendChild(pointsWrapper);
         this.main.classList.add("points-table");
-        pointsWrapper.appendChild(this.main);
-        importFromDiscord.onclick = function() {
-            thisAp.reImportFromDiscord().then((importedEntries) => {
-                const sorted = importedEntries.sort((a, b) => a.getNation().getName(thisAp.locUser).localeCompare(b.getNation().getName(thisAp.locUser)));
-                thisAp.populateTable(ws, sorted, thisAp.main, headerRow);
-            });
-        };
-        exportToClipboard.onclick = function() {
-            thisAp.exportToClipboard();
-        };
-        addEntryButton.onclick = function() {
-            const newEntry = new Entry(DEFAULT_POINTS, OverrideNation.fabricateDummyNation("???", thisAp.game), new Discord().getNewNoUserUser());
-            const newEntries = thisAp.entries.concat([newEntry]);
-            thisAp.populateTable(ws, newEntries, thisAp.main, headerRow);
-        };
-        addColonialEntryButton.onclick = function() {
-            
-        };
-        ws.setOnMessage(event =>  {
-            const data = JSON.parse(event.data);
-            if (data.type == MessageType.CHANGE_ENTRY) { // TODO: implement all possible changes
-                const entryCore = data.entry;
-                const matchingLocalEntry = thisAp.entries.find(e => e.getId() == entryCore.id);
-                if (matchingLocalEntry) {
-                    matchingLocalEntry.setPoints(entryCore.points);
-                    const nation = thisAp.game.getNationByTag(entryCore.nation);
-                    if (nation) {
-                        matchingLocalEntry.setNation(nation);
-                    } else {
-                        throw new Error("Could not find nation for tag " + entryCore.nation);
-                    }
-                } else {
-                    throw new Error("Could not find entry for id " + entryCore.id);
+        this.pointsWrapper.appendChild(this.main);
+        headerheader.appendChild(this.setupButtons(this.wsWrapper, headerRow));
+        this.wsWrapper.setOnMessage(event =>  {
+            const eventData = JSON.parse(event.data);
+            if (eventData.type == MessageType.CHECKIN_OK) {
+                this.statusIndicator(CheckinStatus.OK);
+            }
+            if (eventData.type == MessageType.DATA_DELIVERY || eventData.type == MessageType.CHECKIN_OK) {
+                console.log(eventData);
+                const packedEntries = eventData.data;
+                const unpackedEntries: Entry[] = [];
+                for (let entryCore of packedEntries) {
+                    unpackedEntries.push(this.unpackEntry(entryCore));
+                    thisAp.populateTable(unpackedEntries, thisAp.main, headerRow);
                 }
-            } else if (data.type == MessageType.DATA_DELIVERY) {
-                const packedEntries = data.entries;
-                packedEntries.forEach((entryCore: any) => {
-                    const unpackedEntries: Entry[] = [];
-                    thisAp.unpackEntry(entryCore).then((newEntry) => {
-                        unpackedEntries.push(newEntry);
-                    });
-                    return Promise.all(unpackedEntries);
-                }).then((arg: Entry[]) => {
-                    thisAp.populateTable(ws, arg, thisAp.main, headerRow);
-                });
-            } else if (data.type == MessageType.REQUESTING_DATA) {
-                ws.sendMessage(JSON.stringify({type: MessageType.DATA_DELIVERY, sourceId: thisAp.myID, entries: thisAp.entries.map(e => e.toSendable())}));
-            } else if (data.type == MessageType.ADD_ENTRY) {
-                thisAp.unpackEntry(data.entry).then((newEntry) => {
-                    thisAp.populateTable(ws, thisAp.entries.concat([newEntry]), thisAp.main, headerRow);
-                });
-            } else if (data.type == MessageType.REMOVE_ENTRY) {
-                const newEntries = thisAp.entries.filter(e => e.getId() != data.id);
-                thisAp.populateTable(ws, newEntries, thisAp.main, headerRow);
+            //} else if (data.type == MessageType.REQUESTING_DATA) {
+            //    this.sendAuthorizedMessage(MessageType.DATA_DELIVERY, this.entries.map(e => e.toSendable()));
+            } else if (eventData.type == MessageType.CHECKIN_FAIL) {
+                this.statusIndicator(CheckinStatus.FAIL);
             }
         });
     }
 
-    private async unpackEntry(entryCore: any): Promise<Entry> {
-        const nation = this.game.getNationByTag(entryCore.nation);
+    private sendAuthorizedMessage(type: MessageType, data: SendableEntry[]) {
+        this.wsWrapper.sendMessage({type: type, lobbyID: this.lobbyID, password: this.pw, data: data});
+    }
+
+    private unpackEntry(entryCore: any): Entry {
+        let nation = this.game.getNationByTag(entryCore.nation);
         if (nation == null) {
-            throw new Error("Could not find nation for tag " + entryCore.nation);
+            nation = OverrideNation.fabricateDummyNation("???", this.game)
         }
-        if (this.cachedDiscordUsers.size == 0) {
-            await this.reImportFromDiscord();
-        }
-        const player = this.cachedDiscordUsers.get(entryCore.player);
+        let player = this.discord.getCachedDiscordUsers().get(entryCore.player);
         if (player == null) {
-            throw new Error("Could not find player for id " + entryCore.player);
+            player = this.discord.getNewNoUserUser();
         }
-        const newEntry = new Entry(entryCore.points, nation, player);
-        return newEntry;
+        return new Entry(entryCore.points, nation, player);
     }
 
     
-    public populateTable(ws: WebSocketWrapper, entriesArg: Entry[], main: HTMLDivElement, headerRow: {row: HTMLDivElement, pointsPanel: HTMLDivElement, buttonPanel: HTMLDivElement, flagPanel: HTMLDivElement, namePanel: HTMLDivElement, playerPanel: HTMLDivElement}) {
+    public populateTable(entriesArg: Entry[], main: HTMLDivElement, headerRow: {row: HTMLDivElement, pointsPanel: HTMLDivElement, buttonPanel: HTMLDivElement, flagPanel: HTMLDivElement, namePanel: HTMLDivElement, playerPanel: HTMLDivElement}) {
         this.entries = entriesArg;
         main.innerHTML = "";
-        const sortSymbols = ["⮝","⮟"];
+        const sortSymbols = [" ⮝"," ⮟"];
         let focusedColumn: HTMLDivElement | null = null;
         headerRow.pointsPanel.textContent = "Points";
         //headerRow.flagPanel.textContent = "Flag";
@@ -182,7 +155,7 @@ export class AlliancePoints {
                 const rawComparator = thisActually.perColComparator.get(column)!;
                 if (focusedColumn != null) {
                     const prev = focusedColumn.textContent!;
-                    focusedColumn.textContent = prev.substring(0, prev.length - 1);
+                    focusedColumn.textContent = prev.substring(0, prev.length - sortSymbols[0].length);
                 }
                 thisActually.filterDirection = focusedColumn == column ? -thisActually.filterDirection : 1;
                 focusedColumn = column;
@@ -194,10 +167,10 @@ export class AlliancePoints {
         headerRow.namePanel.click();
         for (let entry of this.entries) {
             const div = this.setupTableEntry(entry, () => {
-                ws.sendMessage(JSON.stringify({type: MessageType.CHANGE_ENTRY, entry: entry.toSendable()}));
+                this.sendAuthorizedMessage(MessageType.DATA_DELIVERY, this.entries.map(e => e.toSendable()));
             }, (e: Entry) => {
                 const newEntries = this.entries.filter(e2 => e2 != e);
-                this.populateTable(ws, newEntries, main, headerRow);
+                this.populateTable(newEntries, main, headerRow);
             });
             main.appendChild(div);
             entry.div = div;
@@ -212,7 +185,7 @@ export class AlliancePoints {
         pointsPanel.textContent = entry.getPoints().toString();
         entry.addValueChangeListener(() => {
             pointsPanel.textContent = entry.getPoints().toString();
-            namePanel.textContent = entry.getNation().getName(this.locUser);
+            namePanel.textContent = entry.getNation().getAlias();
             playerPicPanel.innerHTML = "";
             playerPicPanel.appendChild(entry.getPlayer().makeAvatarImage());
             playerPanel.textContent = entry.getPlayer().getName();
@@ -236,6 +209,7 @@ export class AlliancePoints {
         const thisAp = this;
         removalPanel.onclick = function() {
             removeEntry(entry);
+            sender();
         };
         buttonPanel.appendChild(up);
         buttonPanel.appendChild(upDownSeparator);
@@ -256,7 +230,7 @@ export class AlliancePoints {
             });
         };
 
-        namePanel.textContent = entry.getNation().getName(this.locUser);
+        namePanel.textContent = entry.getNation().getAlias();
         playerPanel.textContent = entry.getPlayer().getName();
 
         const playerPic = entry.getPlayer().makeAvatarImage();
@@ -281,28 +255,33 @@ export class AlliancePoints {
         const playerPicPanel = document.createElement('div');
         const playerPanel = document.createElement('div');
         let removalPanel = document.createElement('div');
-        const suffix = isTitle ? "-title" : "";
-        row.classList.add("points-table-row");
         for (let suffix of isTitle ? ["", "-title"] : [""]) {
             row.classList.add("points-table-row" + suffix);
-            indexPanel.classList.add("point-table-row-index" + suffix);
-            pointsPanel.classList.add("point-table-row-points" + suffix);
-            buttonPanel.classList.add("point-table-row-buttons" + suffix);
-            flagPanel.classList.add("point-table-row-flag" + suffix);
-            namePanel.classList.add("point-table-row-name" + suffix);
-            playerPicPanel.classList.add("point-table-row-flag" + suffix);
-            playerPanel.classList.add("point-table-row-player" + suffix);
-            removalPanel.classList.add("point-table-row-removal" + suffix);
         }
-        playerPicPanel.classList.add("childIsDiscPic");
+        if (isTitle) {
+            row.classList.add("ptr-title");
+        }
+        playerPicPanel.classList.add("ptr-player-img-parent");
+        flagPanel.classList.add("ptr-flag-img-parent");
         for (let child of [indexPanel, buttonPanel, pointsPanel, flagPanel, namePanel, playerPicPanel, playerPanel, removalPanel]) {
             row.appendChild(child);
+            child.classList.add("ptr-cell");
         }
+        pointsPanel.style.width = "100px";
+        namePanel.style.width = "300px";
+        playerPanel.style.width = "400px";
+        removalPanel.classList.add("parentofClickable");
+        buttonPanel.classList.add("parentofClickable");
+        buttonPanel.classList.add("parentOfBigControlElement")
+        buttonPanel.style.fontSize = "calc(0.35 * var(--points-row-height))";
+        buttonPanel.classList.add("ptr-big-font");
+        pointsPanel.classList.add("ptr-big-font");
+
         if (!isTitle) {
             const removalChild = document.createElement("div");
             removalPanel.appendChild(removalChild);
             removalChild.textContent = "❌";
-            removalPanel = removalChild;
+            removalPanel = removalChild;    
         }
         return {row: row, indexPanel: indexPanel, pointsPanel: pointsPanel, buttonPanel: buttonPanel, flagPanel: flagPanel, namePanel: namePanel, playerPicPanel: playerPicPanel, playerPanel: playerPanel, removalPanel: removalPanel};
     }
@@ -310,13 +289,12 @@ export class AlliancePoints {
     private async exportToClipboard() {
         const localEntries = this.entries.slice();
         localEntries.sort(this.comparator);
-        const maxLen = localEntries.map((e) => e.getNation().getName(this.locUser).length).reduce((a, b) => Math.max(a, b), 0);
-        const entryToLine = (e: Entry) => e.getPoints().toString().padEnd(2) + " " + e.getNation().getName(this.locUser).padEnd(maxLen) + " <@" + e.getPlayer().getId() + ">";
+        const maxLen = localEntries.map((e) => e.getNation().getAlias().length).reduce((a, b) => Math.max(a, b), 0);
+        const entryToLine = (e: Entry) => e.getPoints().toString().padEnd(2) + " " + e.getNation().getAlias().padEnd(maxLen) + " <@" + e.getPlayer().getId() + ">";
         let result = "_";
         for (let i = 0; i < localEntries.length; i++) {
             if (i == 0 || this.comparator(localEntries[i], localEntries[i - 1]) != 0) {
                 result += "\n";
-
             }
             result += "\n" + entryToLine(localEntries[i]);   
         }
@@ -337,7 +315,7 @@ export class AlliancePoints {
         });
         children.forEach(c => this.main.appendChild(c));
         children.forEach((c, i) => {
-            const childIndexPanel = c.getElementsByClassName("point-table-row-index")[0];
+            const childIndexPanel = c.firstChild as HTMLDivElement;
             if (childIndexPanel.children.length == 0) {
                 const div = document.createElement("div");
                 childIndexPanel.appendChild(div);
@@ -346,7 +324,7 @@ export class AlliancePoints {
         });
     }
 
-    private popupDiscordUserSelectorTable(callback: (user: DiscordUser) => void) {
+    private getPopupContainer() {
         const popupCover = document.createElement("div");
         const popup = document.createElement("div");
         popupCover.classList.add("popup-screencover");
@@ -359,6 +337,11 @@ export class AlliancePoints {
         popup.onclick = function(event) {
             event.stopPropagation();
         };
+        return {popupCover: popupCover, popup: popup};
+    }
+
+    private popupDiscordUserSelectorTable(callback: (user: DiscordUser) => void) {
+        const {popupCover, popup} = this.getPopupContainer();
         const table = new ImageSelectionTable("Select User", 6, (user: DiscordUser) => {
             callback(user);
             document.body.removeChild(popupCover);
@@ -367,23 +350,12 @@ export class AlliancePoints {
         table.setLocalisationProvider(this.locProvider);
         table.getPanel().style.width = "400px";
         table.getPanel().style.height = "400px";
-        table.setElements(Array.from(this.cachedDiscordUsers.values()));
+        table.setElements(Array.from(this.discord.getCachedDiscordUsers().values()));
         popup.appendChild(table.getPanel());
     }
 
     private popupNationSelectorTable(callback: (nation: Nation) => void) {
-        const popupCover = document.createElement("div");
-        const popup = document.createElement("div");
-        popupCover.classList.add("popup-screencover");
-        popup.classList.add("popup");
-        popupCover.appendChild(popup);
-        document.body.appendChild(popupCover);
-        popupCover.onclick = function() {
-            document.body.removeChild(popupCover);
-        };
-        popup.onclick = function(event) {
-            event.stopPropagation();
-        };
+        const {popupCover, popup} = this.getPopupContainer();
         if (this.cachedNationTable == null) {
             const table = new ImageSelectionTable("Select Nation", 6, (nation: Nation) => {
                 callback(nation);
@@ -404,18 +376,7 @@ export class AlliancePoints {
     }
     
     private popupColonySelectorDialog(callback: (overlord: Nation, region: ColonialRegion)=> void) {
-        const popupCover = document.createElement("div");
-        const popup = document.createElement("div");
-        popupCover.classList.add("popup-screencover");
-        popup.classList.add("popup");
-        popupCover.appendChild(popup);
-        document.body.appendChild(popupCover);
-        popupCover.onclick = function() {
-            document.body.removeChild(popupCover);
-        };
-        popup.onclick = function(event) {
-            event.stopPropagation();
-        };
+        const {popupCover, popup} = this.getPopupContainer();
         const overlordTable = new ImageSelectionTable("Select Overlord", 6, (overlord: INation) => {
             document.body.removeChild(popupCover);
         });
@@ -438,6 +399,195 @@ export class AlliancePoints {
     }
 
     private async reImportFromDiscord(): Promise<Entry[]> {
-        return new Discord().reImportFromDiscord(this.nationGuesser, this.game);
+        return this.discord.reImportFromDiscord(this.nationGuesser, this.game);
+    }
+
+    private setupInputs() {
+        const inputParent = document.createElement("div");
+        inputParent.classList.add("horizontal-container");
+        const thisAp = this;
+        inputParent.appendChild(this.fabricateInputButtonCombo(["Lobby ID", "Password"], "📡", [false,false], [this.lobbyID, this.pw], (inputs) => {
+            const lobbyID = inputs[0];
+            const pw = inputs[1];
+            this.lobbyID = lobbyID;
+            this.pw = pw;
+            setCookie("ap_id", lobbyID, 30);
+            setCookie("ap_pw", pw, 30);
+            this.sendAuthorizedMessage(MessageType.CHECKIN, []);
+        }));
+        this.statusIndicator = (status: CheckinStatus) => {
+            const target = inputParent.firstChild!.lastChild as HTMLDivElement;
+            if (status == CheckinStatus.OK) {
+                target.textContent = "✅";
+            } else if (status == CheckinStatus.FAIL) {
+                target.textContent = "❌";
+            } else if (status == CheckinStatus.SERVER_CLOSED) {
+                target.textContent = "💀";
+            } else if (status == CheckinStatus.NONE) {
+                target.textContent = "📡";
+            }
+        };
+        return inputParent;
+    }
+
+    private fabricateInputButtonCombo(placeholder: string[], buttonText: string, isSecret: boolean[], initialValues: string[], buttonCallback: (inputValues: string[]) => void) {
+        const comboWrapper = document.createElement("div");
+        comboWrapper.classList.add("horizontal-container");
+        comboWrapper.classList.add("points-ui-input-combo");
+        for (let i = 0; i < placeholder.length; i++) {
+            const input = document.createElement("input");
+            input.type = isSecret[i] ? "password" : "text";
+            input.placeholder = placeholder[i];
+            input.value = initialValues[i];
+            comboWrapper.appendChild(input);
+        }
+        const button = document.createElement("div");
+        button.textContent = buttonText;
+        comboWrapper.appendChild(button);
+        button.onclick = function() {
+            buttonCallback(Array.from(comboWrapper.children).filter((c) => c instanceof HTMLInputElement).map((c) => (c as HTMLInputElement).value));
+        };
+        return comboWrapper;
+    }
+
+    private setupButtons(ws: WebSocketWrapper, headerRow: {row: HTMLDivElement, pointsPanel: HTMLDivElement, buttonPanel: HTMLDivElement, flagPanel: HTMLDivElement, namePanel: HTMLDivElement, playerPanel: HTMLDivElement}) {
+        const buttonParent = document.createElement("div");
+        const editingButtonParent = document.createElement("div");
+        const extraButtonParent = document.createElement("div");
+        buttonParent.classList.add("horizontal-container");
+        buttonParent.classList.add("points-ui-button-panel");
+        buttonParent.appendChild(editingButtonParent);
+        buttonParent.appendChild(extraButtonParent);
+        for (let parent of [editingButtonParent, extraButtonParent]) {
+            parent.classList.add("horizontal-container");
+            parent.classList.add("parentofClickable");
+        }
+        const importFromDiscord = document.createElement("div");	
+        importFromDiscord.textContent = "🡓DC";
+        editingButtonParent.appendChild(importFromDiscord);
+
+        const addEntryButton = document.createElement("div");
+        addEntryButton.textContent = "➕";
+        editingButtonParent.appendChild(addEntryButton);
+
+        const addColonialEntryButton = document.createElement("div");
+        addColonialEntryButton.textContent = "➕🏝️";
+        editingButtonParent.appendChild(addColonialEntryButton);
+
+        const toImage = document.createElement("div");
+        toImage.textContent = "📷";
+        extraButtonParent.appendChild(toImage);
+
+        const exportToClipboard = document.createElement("div");
+        exportToClipboard.textContent = "🡑📋"
+        extraButtonParent.appendChild(exportToClipboard);
+        const thisAp = this;
+        importFromDiscord.onclick = function() {
+            thisAp.reImportFromDiscord().then((importedEntries) => {
+                const sorted = importedEntries.sort((a, b) => a.getNation().getName(thisAp.locUser).localeCompare(b.getNation().getName(thisAp.locUser)));
+                thisAp.populateTable(sorted, thisAp.main, headerRow);
+            });
+        };
+        exportToClipboard.onclick = function() {
+            thisAp.exportToClipboard();
+        };
+        addEntryButton.onclick = function() {
+            const newEntry = new Entry(Entry.DEFAULT_POINTS, OverrideNation.fabricateDummyNation("???", thisAp.game), thisAp.discord.getNewNoUserUser());
+            const newEntries = thisAp.entries.concat([newEntry]);
+            thisAp.populateTable(newEntries, thisAp.main, headerRow);
+        };
+        addColonialEntryButton.onclick = function() {
+            
+        };
+        toImage.onclick = function() {
+            document.fonts.ready.then(() => {
+                thisAp.exportAsImage("Bündnispunkte", false);
+            });
+        };
+
+        return buttonParent;
+    }
+
+    private exportAsImage(title: string, discordStyle: boolean) {
+        const scale = 1;
+        const flagScale = 0.8;
+        const avatarScale = 0.6;
+        const avatarSpacing = 1 - avatarScale;
+        const fontFamily = "Inter";
+        const thick = 4;
+        const thin = 1;
+
+        const pointSortedEntries = this.entries.slice().sort((a, b) => a.getNation().getAlias().localeCompare(b.getNation().getAlias()));
+        pointSortedEntries.sort((a, b) => b.getPoints() - a.getPoints());	
+        const canvas = document.createElement("canvas");
+        const style = getComputedStyle(document.documentElement);
+        const perRowHeight = scale * Number.parseInt(style.getPropertyValue("--points-row-height").replace("px", ""));
+        const bigFontSize = (2 * perRowHeight/ 3);
+        const fontSize = scale * Number.parseInt(style.getPropertyValue("--points-table-font-size").replace("px", ""));
+        const fontColor = style.getPropertyValue(discordStyle ? "--discord-font-color" : "--font-color");
+        const mainColor = style.getPropertyValue(discordStyle ? "--discord-background-color" : "--main-color");
+        const headerPixelHeight = perRowHeight * 1.5;
+        canvas.height = headerPixelHeight + perRowHeight * this.entries.length;
+        canvas.width = scale * (900 + perRowHeight)
+        const ctx = canvas.getContext('2d')!;
+        ctx.fillStyle = mainColor;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = fontColor;
+        ctx.strokeStyle = fontColor;
+        ctx.lineWidth = thick;
+        ctx.strokeRect(0+thick/2, 0 + thick/2, canvas.width - thick/2 - 1, canvas.height - thick/2 - 1);
+
+        ctx.font = bigFontSize + "px " + fontFamily;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(title, canvas.width / 2, 0.6 * headerPixelHeight);
+        for (let i = 0; i < pointSortedEntries.length; i++) {
+            ctx.lineWidth = i != 0 && pointSortedEntries[i].getPoints() === pointSortedEntries[i - 1].getPoints() ? thin : thick;
+            console.log(i + " " + ctx.lineWidth);
+            ctx.beginPath();
+            ctx.moveTo(0, headerPixelHeight + i * perRowHeight);
+            ctx.lineTo(canvas.width, headerPixelHeight + i * perRowHeight);
+            ctx.stroke();
+        }
+        ctx.lineWidth = thin
+        ctx.font = bigFontSize + "px " + fontFamily;
+        ctx.textBaseline = "middle";    
+        const flagGuideX = 2 * perRowHeight;
+        ctx.globalAlpha = 0.25;
+        ctx.beginPath();
+        ctx.moveTo(perRowHeight, headerPixelHeight);
+        ctx.lineTo(perRowHeight, headerPixelHeight + perRowHeight * pointSortedEntries.length);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+
+        for (let i = 0; i < pointSortedEntries.length; i++) {
+            ctx.font = fontSize + "px " + fontFamily;
+            ctx.fillStyle = fontColor;
+            ctx.textBaseline = "middle";
+            ctx.textAlign = "center";
+            ctx.globalAlpha = 0.5;
+            ctx.fillText((i + 1).toString(), perRowHeight/2, headerPixelHeight + i * perRowHeight + perRowHeight / 2);
+            ctx.globalAlpha = 1;
+
+            ctx.textBaseline = "middle";    
+            ctx.textAlign = "right";
+            ctx.font = bigFontSize + "px " + fontFamily;
+            if (i == 0 || pointSortedEntries[i].getPoints() != pointSortedEntries[i - 1].getPoints()) {
+                ctx.fillText(pointSortedEntries[i].getPoints().toString(), flagGuideX, headerPixelHeight + i * perRowHeight + perRowHeight / 2);
+            }
+            const imageSize = perRowHeight * flagScale;
+            ImageUtil.drawImage(ctx, pointSortedEntries[i].getNation().makeImage().src, flagGuideX + imageSize, headerPixelHeight + ((1 - flagScale)/2 + i) * perRowHeight, imageSize, getCoatOfArmsPolygonClipPath(), false);
+            ctx.textAlign = "left";
+            ctx.font = fontSize + "px " + fontFamily;
+            ctx.fillText(pointSortedEntries[i].getNation().getAlias(), flagGuideX + 3 * imageSize, headerPixelHeight + i * perRowHeight + perRowHeight / 2);
+            const userImageUrl = pointSortedEntries[i].getPlayer().makeAvatarImage().src;
+            const avatarSize = perRowHeight * avatarScale;
+            ImageUtil.drawImage(ctx, userImageUrl, flagGuideX + 2.5 * imageSize + avatarSize + 2 * perRowHeight, headerPixelHeight + ((avatarSpacing)/2 + i) * perRowHeight, avatarSize, getCircularPolygonClipPath(), false);
+            ctx.fillText(pointSortedEntries[i].getPlayer().getName(), flagGuideX + 2.5 * imageSize + avatarSize + 3 * perRowHeight, headerPixelHeight + i * perRowHeight + perRowHeight / 2);
+        }
+        canvas.style.height = "800px";
+        canvas.style.width = "auto";
+        const {popupCover, popup} = this.getPopupContainer();
+        popup.appendChild(canvas);
     }
 }

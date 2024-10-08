@@ -18,6 +18,8 @@ export class ImageSelectionTable<T extends IHasImage & IHasLocalisableName> exte
     private panelTitle;
     private filterString = "";
     private allNations: T[] = [];
+    private filterOkNations: T[] = [];
+    private numVisibleNations = 0;
 
     constructor(panelTitle: string, columns: number, selectionCallback: (selectedElement: T) => void) {
         super();
@@ -78,22 +80,25 @@ export class ImageSelectionTable<T extends IHasImage & IHasLocalisableName> exte
             .toSorted((a, b) => a.getName(this).localeCompare(b.getName(this)));
         this.panelTitlePanel.textContent = this.panelTitle + " (" + includedNations.length + ")";
         while(this.alreadyDisplayedNumberOfNations < includedNations.length) {
-            const i = this.alreadyDisplayedNumberOfNations;
-            const itemDiv = document.createElement("div");
-            itemDiv.style.width = 100 / this.columns + "%";
-            itemDiv.style.boxSizing = "border-box";
-            const img = includedNations[i].makeImage();
-            img.classList.add("nation-table-item-img");
-            img.style.width = "100%";
-            img.style.height = "auto";
-            itemDiv.appendChild(img);
-            img.onmouseup = (event) => {
-                this.callback(includedNations[i]);
-                event.stopPropagation();
-            };
-            this.contentPanel.appendChild(itemDiv);
-            this.alreadyDisplayedNumberOfNations++;        
+            this.displayElement(includedNations[this.alreadyDisplayedNumberOfNations]);        
         }
+    }
+
+    private displayElement(source: T) {
+        const itemDiv = document.createElement("div");
+        itemDiv.style.width = 100 / this.columns + "%";
+        itemDiv.style.boxSizing = "border-box";
+        const img = source.makeImage();
+        img.classList.add("nation-table-item-img");
+        img.style.width = "100%";
+        img.style.height = "auto";
+        itemDiv.appendChild(img);
+        img.onmouseup = (event) => {
+            this.callback(source);
+            event.stopPropagation();
+        };
+        this.contentPanel.appendChild(itemDiv);
+        this.alreadyDisplayedNumberOfNations++;
     }
 
     public setLocalisationProvider(provider: ILocalisationProvider) {

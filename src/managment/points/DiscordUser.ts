@@ -3,15 +3,22 @@ import { IHasLocalisableName } from "../../model/IHasName";
 
 export class DiscordUser implements IHasImage, IHasLocalisableName {
 
-    constructor(private name: string, private id: string, private avatarUrl: string) {
+    private avatarUrl: string;
+
+    constructor(private name: string, private id: string, avatarUrl: string | null) {
         this.name = name;
         this.id = id;
-        this.avatarUrl = avatarUrl;
+        if (avatarUrl != null) {
+            this.avatarUrl = avatarUrl;
+        } else {
+            this.avatarUrl = "https://cdn.discordapp.com/embed/avatars/0.png";
+        }
     }
     
     makeImage(): HTMLImageElement {
         const img = document.createElement("img");
         img.src = this.avatarUrl;
+        img.loading = "lazy";
         return img
     }
 

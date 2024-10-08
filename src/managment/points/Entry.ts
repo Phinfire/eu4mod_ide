@@ -1,8 +1,17 @@
 import { INation } from "../../model/INation";
 import { DiscordUser } from "./DiscordUser";
 
+export interface SendableEntry {
+    id: string;
+    points: number;
+    nation: string;
+    player: string;
+}
+
 export class Entry {
     
+
+    public static readonly DEFAULT_POINTS = 6;
     public static readonly MIN_POINTS = 1;
     public static readonly MAX_POINTS = 18;
 

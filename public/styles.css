@@ -1,19 +1,8 @@
 :root {
-    --font-family: "Inter", sans-serif;  
-    --background-color: rgb(22,22,22);
-    --main-color: rgb(30, 30, 30);
-    --font-color: rgb(220, 220, 157);
-    --big-font-size: 24px;
-    --medium-font-size: 16px;
-}
-
-* {
-    font-family: var(--font-family);
-    font-weight: 400;
-    font-style: normal;
-    font-size: var(--medium-font-size);
-    color: var(--font-color);
-    /*cursor: url("http://codingafterdark.de/ide/gfx/normal.png"), auto;*/
+    --points-row-height: 80px;
+    --points-table-font-size: 20px;
+    --points-table-input-font-size: 20px;
+    --points-table-header-background-color: rgb(45,45,45);
 }
 
 img {
@@ -32,6 +21,7 @@ body {
     justify-content: center;
     align-items: center;
     display: flex;
+    flex-direction: column;
 }
 
 .main {

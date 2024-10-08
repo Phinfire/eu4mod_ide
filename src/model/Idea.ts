@@ -12,7 +12,7 @@ export class Idea implements IHasImage {
     
     getImageUrl(): string {
         const firstModifierName = this.getModifierAssignments().keys().next().value;
-        return Constants.getGfx("ideas/" + firstModifierName + ".png");
+        return Constants.getGfx("ideas/" + firstModifierName + ".webp");
     }
 
     makeImage(): HTMLImageElement {

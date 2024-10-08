@@ -16,7 +16,7 @@ export abstract class AbstractLocalisationUser {
         }
         const straightLookup = this.provider.localize(key, this.language);
         if (straightLookup !== key) {
-            return straightLookup;
+            return straightLookup;  
         }
         const upperLookup = this.provider.localize(key.toUpperCase(), this.language);
         if (upperLookup !== key.toUpperCase()) {

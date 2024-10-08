@@ -15,6 +15,13 @@ export function mapsAreEqual<T,R>(map1: Map<T,R>, map2: Map<T,R>): boolean {
 
 
 export function setupCoatOfArmsPolygonClipPath(flag: HTMLImageElement) {
+    flag.style.clipPath = getCoatOfArmsPolygonClipPathString();
+    flag.addEventListener("dragstart", (event) => {
+        event.preventDefault();
+    });
+}
+
+export function getCoatOfArmsPolygonClipPath() {
     const startCurve = 40;
     const halfCurveSteps = 10;
     const clipPolyPoints = [];
@@ -35,10 +42,24 @@ export function setupCoatOfArmsPolygonClipPath(flag: HTMLImageElement) {
         const partner: { x: number, y: number } = clipPolyPoints[i];
         clipPolyPoints.push({x: (100-partner.x), y: partner.y});
     }
-    flag.style.clipPath = "polygon(" + clipPolyPoints.map(p => p.x + "% " + p.y + "%").join(",") + ")";
-    flag.addEventListener("dragstart", (event) => {
-        event.preventDefault();
-    });
+    return clipPolyPoints;
+}
+
+export function getCircularPolygonClipPath() {
+    const center = {x: 50, y: 50};
+    const radius = 50;
+    const steps = 20;
+    const clipPolyPoints = [];
+    for (let i = 0; i < steps; i++) {
+        const x = center.x + Math.cos(i / steps * 2 * Math.PI) * radius;
+        const y = center.y + Math.sin(i / steps * 2 * Math.PI) * radius;
+        clipPolyPoints.push({x: x, y: y});
+    }
+    return clipPolyPoints;
+}
+
+export function getCoatOfArmsPolygonClipPathString() {
+    return "polygon(" + getCoatOfArmsPolygonClipPath().map(p => p.x + "% " + p.y + "%").join(",") + ")";
 }
 
 
@@ -73,4 +94,22 @@ function resolveAdditionExpression(input: string) {
         }
         throw new Error("Invalid component expression: \"" + part + "\"");
     }).reduce((a, b) => a + b, 0);
+}
+
+export function setCookie(name: string, value: string, days: number) {
+    const date = new Date();
+    date.setTime(date.getTime() + (days * 24 * 60 * 60 * 1000));
+    const expires = "expires=" + date.toUTCString();
+    document.cookie = name + "=" + value + ";" + expires + ";path=/";
+}
+
+export function getCookie(name: string): string | null {
+    const nameEQ = name + "=";
+    const ca = document.cookie.split(';');
+    for (let i = 0; i < ca.length; i++) {
+        let c = ca[i];
+        while (c.charAt(0) === ' ') c = c.substring(1, c.length);
+        if (c.indexOf(nameEQ) === 0) return c.substring(nameEQ.length, c.length);
+    }
+    return null;
 }

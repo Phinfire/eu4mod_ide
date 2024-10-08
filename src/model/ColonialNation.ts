@@ -40,4 +40,8 @@ export class ColonialNation implements INation {
     getIdeas(): NationalIdeaSet {
         throw new Error("Method not implemented.");
     }
+
+    getAlias(): string {
+        return this.overlord.getAlias() + " Colony";
+    }
 }

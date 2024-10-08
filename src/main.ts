@@ -5,13 +5,18 @@ import { parseLocalisationFile } from "./parse/parse";
 import { AlliancePoints } from "./managment/ui/AlliancePoints";
 import { NationGuesser } from "./managment/NationGuesser";
 import { Constants } from "./Constants";
+import { AppWrapper } from "./ui/AppWrapper";
+import { ITabApp } from "./ui/ITabApp";
+import { MapSelect } from "./managment/ui/MapSelect";
+import { getCookie } from "./utils";
+import { AppTest } from "./managment/ui/Test";
 
-const fetchPromises = ["common", "history"].map(key => fetch("http://codingafterdark.de/ide/game_" + key +".json"+ "?" + new Date().getUTCFullYear()).then(response => response.json()));
+const fetchPromises = ["common", "history"].map(key => fetch("http://codingafterdark.de/ide/game_" + key +".json").then(response => response.json()));
 
-const gamePromise = Promise.all(fetchPromises)
+const gamePromise = Promise.all(fetchPromises.concat([fetch("http://codingafterdark.de/ide/map/definition.csv").then(response => response.text())]))
     .then(results => {
         const game = new Game();
-        game.loadAll(results[0], results[1]);
+        game.loadAll(results[0], results[1], results[2]);
         return game;
     })
     .catch(error => {
@@ -56,6 +61,8 @@ async function setup() {
     main.appendChild(ideasPanel.getPanel()); 
     */
 
+    
+
     const game = await gamePromise;
     const localisationProvider = new LocalisationProvider();
     //table.setNations(game.getAllNations());
@@ -64,7 +71,15 @@ async function setup() {
     //table.setLocalisationProvider(localisationProvider);
     //table.refreshFilterState();
     const guesser = new NationGuesser(localisationProvider);
-    new AlliancePoints("ws://localhost:8081/ws", localisationProvider, guesser, game)
+    //new AlliancePoints("ws://codingafterdark.de:8081/ws", localisationProvider, guesser, game)
+    const mep = new Map<string, () => ITabApp>();
+    //mep.set("Test", () => new AppTest());
+    mep.set("Alliance Points", () => new AlliancePoints("ws://codingafterdark.de:8081/ws", localisationProvider, guesser, game));
+    mep.set("Map", () => new MapSelect(game));
+    //mep.set("Alliance Points", (div: HTMLDivElement) => new AlliancePoints("ws://localhost:8081/ws", localisationProvider, guesser, game, div));
+    
+    const prexistingWrapperDiv = document.getElementsByClassName('app-wrapper')[0] as HTMLDivElement;
+    const wrapperObj = new AppWrapper(prexistingWrapperDiv, mep);
 }
 document.addEventListener('DOMContentLoaded', () => {
     setup();

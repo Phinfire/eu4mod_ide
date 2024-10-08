@@ -1,0 +1,78 @@
+:root {
+    --font-family: "Inter", sans-serif;  
+    --background-color: rgb(22,22,22);
+    --main-color: rgb(30, 30, 30);
+
+    --discord-background-color: rgb(49, 51, 56);
+    --discord-font-color: rgb(242, 243, 245);
+
+    --font-color: rgb(220, 220, 157);
+    --big-font-size: 24px;
+    --medium-font-size: 16px;
+}
+
+* {
+    font-family: var(--font-family);
+    font-weight: 400;
+    font-style: normal;
+    font-size: var(--medium-font-size);
+    color: var(--font-color);
+}
+
+.app-inner-wrapper {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    align-items: center;
+}
+
+.app-tab-panel {
+    display: flex;
+    flex-direction: row;
+    justify-content: flex-start;
+    align-items: center;
+    width: 100%;
+    --tab-height: 50px;
+    height: var(--tab-height);
+}
+
+.app-tab {
+    border: 2px solid var(--font-color);
+    border-top-right-radius: calc(var(--tab-height) / 2);
+    border-bottom: 2px solid var(--main-color);
+    height: calc(var(--tab-height) - 4px);
+    padding-left: 10px;
+    padding-right: calc(var(--tab-height) / 2);
+    font-size: var(--medium-font-size);
+    display: flex;
+    flex-direction: row;
+    justify-content: flex-start;
+    align-items: center;
+    user-select: none;
+    margin-right: 2px;
+    background-color: var(--main-color);
+}
+
+.app-tab:hover {
+    filter: brightness(1.1);
+}
+
+.app-tab-active {
+    filter: brightness(1.2);
+}
+
+.app-tab-selected {
+    filter: brightness(1.5);
+}
+
+.app-content-panel {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    width: calc(100% - 4px);
+    height: 100%;
+    border: 2px solid var(--font-color);
+}

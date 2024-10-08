@@ -1,3 +1,5 @@
+import { SendableEntry } from "./points/Entry";
+
 export class WebSocketWrapper {
 
     constructor(private socket: WebSocket | null, onReady: (wrapper: WebSocketWrapper) => void = () => {}) {
@@ -27,9 +29,33 @@ export class WebSocketWrapper {
         }
     }
 
-    public sendMessage(message: string): void {
+    public sendMessage(message: {type: string, lobbyID: string, password: string, data: SendableEntry[]}): void {
         if (this.socket) {
-            this.socket.send(message);
+            this.socket.send(JSON.stringify(message));
         }
+    }
+
+    public isReallyConnected(): boolean {
+        return this.socket !== null && this.socket.readyState === WebSocket.OPEN;
+    }
+
+    public sendImage(image: Blob): void {
+        if (this.socket) {
+            const reader = new FileReader();
+            reader.onload = () => {
+                if (reader.result && typeof reader.result === 'string') {
+                    this.socket!.send(reader.result);
+                }
+            };
+            reader.readAsDataURL(image);
+        }
+    }
+
+    public sendCanvas(canvas: HTMLCanvasElement): void {
+        canvas.toBlob((blob) => {
+            if (blob) {
+                this.sendImage(blob);
+            }
+        });
     }
 }

@@ -9,4 +9,8 @@ export class Constants {
     public static getGfx(name: string): string {
         return "http://codingafterdark.de/ide/gfx/" + name;
     }
+
+    public static getAppGraphics(name: string): string {
+        return "http://codingafterdark.de/ide/app/" + name;
+    }
 }

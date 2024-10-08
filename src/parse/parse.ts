@@ -92,6 +92,7 @@ function parsePdxTreeNode(tokens: TokenStack, stringContentLookup: Map<string,st
         if (TokenStack.isExpected(token, TokenType.CURLY_CLOSE)) {   
             valueLeaves.push(key);
         } else if (TokenStack.isExpected(token, TokenType.WORD)) {
+            valueLeaves.push(key);
             while (TokenStack.isExpected(token, TokenType.WORD)) {
                 valueLeaves.push(token);
                 token = tokens.popExpectingOneOf([TokenType.WORD, TokenType.CURLY_CLOSE]);

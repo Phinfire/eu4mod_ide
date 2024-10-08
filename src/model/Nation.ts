@@ -10,18 +10,23 @@ import { NationalIdeaSet } from "./NationalIdeaSet";
 
 export class Nation implements INation {
 
-    constructor(private tag: string, private ideas: NationalIdeaSet) {
+    constructor(private tag: string, private alias: string, private ideas: NationalIdeaSet) {
 
     }
 
     getImageUrl() {
-        return Constants.getGfx("flags/" + this.tag + ".png");
+        return Constants.getGfx("flags/" + this.tag + ".webp");
     }
     
     public makeImage() {
         const img = document.createElement("img");
         img.src = this.getImageUrl();
+        img.loading = "lazy";
         return img;
+    }
+
+    getAlias() {
+        return this.alias;
     }
 
     getName(localisationUser: AbstractLocalisationUser) {

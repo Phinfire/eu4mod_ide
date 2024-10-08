@@ -14,4 +14,6 @@ export interface INation extends IHasImage, IHasLocalisableName {
     getTag(): string;
 
     getIdeas(): NationalIdeaSet;
+
+    getAlias(): string;
 }
