@@ -3,6 +3,8 @@ import { ITabApp } from "../../ui/ITabApp";
 import { Constants } from '../../Constants';
 import { Game } from '../../model/Game';
 import { ImageUtil, RGB } from '../../util/ImageUtil';
+import { Province } from '../../model/Province';
+import { MapUtil } from '../../MapUtil';
 
 export class MapSelect implements ITabApp {
 
@@ -25,8 +27,7 @@ export class MapSelect implements ITabApp {
             maxZoom: 4,
         });
         map.zoomControl.remove();
-        //
-        this.canvas = ImageUtil.imageToCanvas(imageUrl, new Map(), (canvas) => {
+        this.canvas = ImageUtil.imageToCanvas(imageUrl, this.game.get1444ProvinceColor2OwnerColor((p: Province) => MapUtil.getUnownedColor(p)), (canvas) => {
             L.imageOverlay(canvas.toDataURL(), imageBounds).addTo(map);
             map.fitBounds(imageBounds);
             this.panel.style.backgroundColor = "var(--main-color)";
@@ -44,13 +45,12 @@ export class MapSelect implements ITabApp {
             });
             const originalRGBA = this.referenceCanvas.getContext('2d')!.getImageData(x, y, 1, 1).data;
             const mean = ImageUtil.findMeanCoordinates(this.referenceCanvas, new RGB(originalRGBA[0], originalRGBA[1], originalRGBA[2]));
-            const provinceId = this.game.provinceColorToId(new RGB(originalRGBA[0], originalRGBA[1], originalRGBA[2]));
+            const province = this.game.getProvinces().filter(p => p.getColorCode().equals(new RGB(originalRGBA[0], originalRGBA[1], originalRGBA[2])))[0];
             let markerText = ""
-            if (this.game.isLandProvinceId(provinceId)) {
-                const province = this.game.getProvinceById(provinceId);
+            if (province.isInhabitable()) {
                 markerText = province.getAlias() + "<br>" + (province.is1444Owned() ? "Owner: " + game.getTagAlias(province.get1444OwnerTag()) : "");   
             } else {
-                markerText = "Water Province (" + provinceId + ")";
+                markerText = "Water Province (" + province.getId() + ")";
             }
             const markerLatLng = xyToLatLng(mean[0], mean[1]);
             const marker = L.marker(markerLatLng).addTo(map);
@@ -71,10 +71,6 @@ export class MapSelect implements ITabApp {
             const y = Math.floor(point.y);
             clickyClicky(e.latlng, x, y);
         });
-    }
-
-    private setup() {
-
     }
 
     getPanel(): HTMLDivElement {

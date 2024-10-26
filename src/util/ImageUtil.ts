@@ -15,6 +15,53 @@ export class RGB {
     }
 }
 
+export class RGBMap {
+
+    private innerNestedMap: Map<number, RGB>;
+
+    constructor(mapping: Map<RGB, RGB>) {
+        this.innerNestedMap = new Map<number, RGB>();
+        for (let [key, value] of mapping) {
+            this.innerNestedMap.set(key.r * 256 * 256 + key.g * 256 + key.b, value);
+        }
+    }
+
+    public get(key: RGB): RGB {
+        if (this.innerNestedMap.has(key.r * 256 * 256 + key.g * 256 + key.b)) {
+            return this.innerNestedMap.get(key.r * 256 * 256 + key.g * 256 + key.b)!;
+        }
+        throw new Error("Key not found: " + key);
+    }
+
+    public has(key: RGB): boolean {
+        return this.innerNestedMap.has(key.r * 256 * 256 + key.g * 256 + key.b);
+    }
+}
+
+export class RBGSet {
+    
+        private innerSet: Set<number>;
+    
+        constructor(mapping: RGB[]) {
+            this.innerSet = new Set<number>();
+            for (let rgb of mapping) {
+                this.innerSet.add(rgb.r * 256 * 256 + rgb.g * 256 + rgb.b);
+            }
+        }
+    
+        public has(key: RGB): boolean {
+            return this.innerSet.has(key.r * 256 * 256 + key.g * 256 + key.b);
+        }
+
+        public getElements(): RGB[] {
+            const result: RGB[] = [];
+            for (let key of this.innerSet) {
+                result.push(new RGB(Math.floor(key / (256 * 256)), Math.floor(key / 256) % 256, key % 256));
+            }
+            return result;
+        }
+    }
+
 export class ImageUtil {
 
     public static imageToCanvas(imageUrl: string, old2New: Map<RGB, RGB>, finalCallback: (c: HTMLCanvasElement) => void, scale: number = 1): HTMLCanvasElement {
@@ -73,7 +120,7 @@ export class ImageUtil {
         ctx.putImageData(imageData, 0, 0);
     }
 
-    private static nestColorLookup(provinceId2RGB: Map<RGB, RGB>) {
+    public static nestColorLookup(provinceId2RGB: Map<RGB, RGB>) {
         const result = new Map<number,Map<number,Map<number,RGB>>>();
         for (let [oldColor, newColor] of provinceId2RGB) {
             if (!result.has(oldColor.r)) {
@@ -129,20 +176,34 @@ export class ImageUtil {
         }
     }  
     
-    public triangulate(ctx: CanvasRenderingContext2D) {
+    public static getAABBOfColor(ctx: CanvasRenderingContext2D, color: RGB): {minX: number, minY: number, maxX: number, maxY: number} {
         const imageData = ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height);
-        const getPixel = (x: number, y: number) => {
-            const i = (y * ctx.canvas.width + x) * 4;
-            return new RGB(imageData.data[i], imageData.data[i + 1], imageData.data[i + 2]);
-        }
-        for (let x = 0; x < ctx.canvas.width-1; x++) {
-            for (let y = 0; y < ctx.canvas.height-1; y++) {
-                const lowLow = getPixel(x, y);
-                const lowHigh = getPixel(x, y+1);
-                const highLow = getPixel(x+1, y);
-                const highHigh = getPixel(x+1, y+1);
-                
+        let minX = ctx.canvas.width;
+        let minY = ctx.canvas.height;
+        let maxX = 0;
+        let maxY = 0;
+        for (let i = 0; i < imageData.data.length; i += 4) {
+            const r = imageData.data[i];
+            const g = imageData.data[i + 1];
+            const b = imageData.data[i + 2];
+            if (r === color.r && g === color.g && b === color.b) {
+                const x = (i / 4) % ctx.canvas.width;
+                const y = Math.floor((i / 4) / ctx.canvas.width);
+                minX = Math.min(minX, x);
+                minY = Math.min(minY, y);
+                maxX = Math.max(maxX, x);
+                maxY = Math.max(maxY, y);
             }
         }
+        return {minX, minY, maxX, maxY};
+    }
+
+    public static mergeAABBs(aabb1: {minX: number, minY: number, maxX: number, maxY: number}, aabb2: {minX: number, minY: number, maxX: number, maxY: number}): {minX: number, minY: number, maxX: number, maxY: number} {
+        return {
+            minX: Math.min(aabb1.minX, aabb2.minX),
+            minY: Math.min(aabb1.minY, aabb2.minY),
+            maxX: Math.max(aabb1.maxX, aabb2.maxX),
+            maxY: Math.max(aabb1.maxY, aabb2.maxY)
+        };
     }
 }

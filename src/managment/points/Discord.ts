@@ -15,13 +15,47 @@ interface IMyDiscordMessage {
 
 export class Discord {
 
-    //private rootUrl: string = "http://localhost:8081/api/";
-    private rootUrl: string = "http://codingafterdark.de:8081/api/";
+    private rootUrl: string = Constants.API_URL;
 
     private cachedDiscordUsers: Map<string, DiscordUser> = new Map<string, DiscordUser>();
 
     constructor() {
 
+    }
+
+    public messageContentToEntries(messageContent: string, nationGuesser: Guesser, game: Game) : Entry[] {
+        const preResult : {nationAlias: string, playerId: string, points: number}[] = [];
+        messageContent.split("\n").map((line: string) => line.trim()).filter((line: string) => line.length > 0 && line.indexOf(".") == -1).forEach((line: string) => {
+            const discordMention = line.match(/<@!?\d+>/);
+            const nationName = line.match(/[A-Za-zÄÖÜäöüß]+/);
+            if (discordMention && nationName) {
+                const nationAlias = nationName[0];
+                const playerId = discordMention[0].substring(2, discordMention[0].length - 1);
+                const lineWithoutNationAndName = line.replace(nationName[0], "").replace(discordMention[0], "").trim();
+                if (lineWithoutNationAndName.length == 0) {
+                    preResult.push({nationAlias: nationAlias, playerId: playerId, points: 6});
+                }
+                const points = resolveAmbigousPointExpression(lineWithoutNationAndName);
+                preResult.push({nationAlias: nationAlias, playerId: playerId, points: points});
+            }
+        });
+        preResult.sort((a, b) => a.nationAlias.localeCompare(b.nationAlias));
+        const result: Entry[] = [];
+        preResult.forEach((entry) => {
+            const tag = nationGuesser.guessNationTag(entry.nationAlias);
+            const player = Discord.isNoUser(entry.playerId) ? new Discord().getNewNoUserUser() : this.cachedDiscordUsers.get(entry.playerId);
+            if (tag && player) {
+                const nation = game.getNationByTag(tag);
+                if (nation) {
+                    result.push(new Entry(entry.points, nation, player));
+                } else {
+                    result.push(new Entry(entry.points, OverrideNation.fabricateDummyNation(entry.nationAlias, game), player));
+                }
+            } else {
+                result.push(new Entry(entry.points, OverrideNation.fabricateDummyNation(entry.nationAlias, game), new Discord().getNewNoUserUser()));
+            }
+        });
+        return result;
     }
 
     public async reImportFromDiscord(nationGuesser: Guesser, game: Game) { //TODO: number matches are too permissive

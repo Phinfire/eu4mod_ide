@@ -113,3 +113,18 @@ export function getCookie(name: string): string | null {
     }
     return null;
 }
+
+export function ifHasCookieValueGetElseSetAndReturn(name: string, value: string): string {
+    const cookieValue = getCookie(name);
+    if (cookieValue) {
+        return cookieValue;
+    }
+    setCookie(name, value, 365);
+    return value;
+}
+
+export function createDiv(clazz: string) {
+    const element = document.createElement("div");
+    element.className = clazz;
+    return element;
+}

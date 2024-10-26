@@ -10,7 +10,6 @@ export interface SendableEntry {
 
 export class Entry {
     
-
     public static readonly DEFAULT_POINTS = 6;
     public static readonly MIN_POINTS = 1;
     public static readonly MAX_POINTS = 18;

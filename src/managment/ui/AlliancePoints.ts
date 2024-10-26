@@ -1,4 +1,4 @@
-import { getCircularPolygonClipPath, getCoatOfArmsPolygonClipPath, getCookie, resolveAmbigousPointExpression, setCookie, setupCoatOfArmsPolygonClipPath } from "../../utils";
+import { createDiv, getCircularPolygonClipPath, getCoatOfArmsPolygonClipPath, getCookie, ifHasCookieValueGetElseSetAndReturn, setCookie, setupCoatOfArmsPolygonClipPath } from "../../utils";
 import { Discord } from "../points/Discord";
 import { Entry, SendableEntry } from "../points/Entry";
 import { Guesser } from "../INationGuesser";
@@ -13,7 +13,9 @@ import { DiscordUser } from "../points/DiscordUser";
 import { WebSocketWrapper } from "../WebsocketWrapper";
 import { OverrideNation } from "../../model/OverrideNation";
 import { ITabApp } from "../../ui/ITabApp";
-import { ImageUtil } from "../../util/ImageUtil";
+import { ImageUtil, RBGSet, RGB } from "../../util/ImageUtil";
+import { Skanderbeg } from "../../skanderbeg/Skanderbeg";
+import { MapUtil } from "../../MapUtil";
 
 enum CheckinStatus {
     NONE,
@@ -21,12 +23,15 @@ enum CheckinStatus {
     FAIL,
     SERVER_CLOSED
 }
+enum MessageType {    
 
-enum MessageType {
-    CHECKIN = "checkin", // send credentials, should never be received by client
+    INTRO = "intro", //TODO
+    DASHBOARD_DATA = "dashboard", //TODO
+
+    CHECKIN = "checkin",
     REQUESTING_DATA = "request",
     DATA_DELIVERY = "delivery",
-    DISCORD_DATA = "discord", // TODO:
+    DISCORD_DATA = "discord", // TODO
     CHECKIN_OK = "checkinok",
     CHECKIN_FAIL = "checkinfail"
 }
@@ -52,15 +57,17 @@ export class AlliancePoints implements ITabApp {
 
     constructor(socketUrl: string, private locProvider: ILocalisationProvider, private nationGuesser: Guesser, private game: Game) {
         this.pointsWrapper = document.createElement('div');
-        this.pointsWrapper.classList.add("points-wrapper");
+        this.pointsWrapper.classList.add("points-table");
 
         this.locUser = new class extends AbstractLocalisationUser  {
         };
         this.locUser.setLocalisationProvider(locProvider);
-        this.main = document.createElement('div');
+        this.main = createDiv("points-table-body");
         const apThis = this;
         const ws = new WebSocket(socketUrl);
         
+        //TODO: send client id to server, get history,user config etc back
+        const userClientId = ifHasCookieValueGetElseSetAndReturn("app_client_id", Math.random().toString());
         const initId = getCookie("ap_id");
         const initPw = getCookie("ap_pw");
         if (initId != null && initPw != null) {
@@ -71,7 +78,7 @@ export class AlliancePoints implements ITabApp {
             this.pw = "";
         }
         this.discord.importUsers().then((users) => {
-                
+            
         });
         this.wsWrapper = new WebSocketWrapper(ws, (wsWrapper: WebSocketWrapper) => {
             apThis.setupUI();
@@ -82,24 +89,18 @@ export class AlliancePoints implements ITabApp {
         return this.pointsWrapper;
     }
 
-    // input: id, pw,
-    // TODO: bypass localization via countries.txt
     private setupUI() {
         const thisAp = this;
-        const tableHeader = document.createElement('div');
-        const headerheader = document.createElement('div');
-        headerheader.classList.add("points-table-top");
+        const tableHeader = createDiv("points-table-header");
+        const headerheader = createDiv("points-table-top");
         headerheader.appendChild(this.setupInputs());
-
         tableHeader.appendChild(headerheader);
-        tableHeader.classList.add("points-table-header");
         this.pointsWrapper.appendChild(tableHeader);
         const headerRow = this.buildRowStructure(true);
         this.perColComparator.set(headerRow.pointsPanel, (e1, e2) => e1.getPoints() - e2.getPoints());
         this.perColComparator.set(headerRow.namePanel, (e1, e2) => e1.getNation().getAlias().localeCompare(e2.getNation().getAlias()));
         this.perColComparator.set(headerRow.playerPanel, (e1, e2) => e1.getPlayer().getName().localeCompare(e2.getPlayer().getName()));
         tableHeader.appendChild(headerRow.row);
-        this.main.classList.add("points-table");
         this.pointsWrapper.appendChild(this.main);
         headerheader.appendChild(this.setupButtons(this.wsWrapper, headerRow));
         this.wsWrapper.setOnMessage(event =>  {
@@ -108,15 +109,12 @@ export class AlliancePoints implements ITabApp {
                 this.statusIndicator(CheckinStatus.OK);
             }
             if (eventData.type == MessageType.DATA_DELIVERY || eventData.type == MessageType.CHECKIN_OK) {
-                console.log(eventData);
                 const packedEntries = eventData.data;
                 const unpackedEntries: Entry[] = [];
                 for (let entryCore of packedEntries) {
                     unpackedEntries.push(this.unpackEntry(entryCore));
-                    thisAp.populateTable(unpackedEntries, thisAp.main, headerRow);
                 }
-            //} else if (data.type == MessageType.REQUESTING_DATA) {
-            //    this.sendAuthorizedMessage(MessageType.DATA_DELIVERY, this.entries.map(e => e.toSendable()));
+                thisAp.populateTable(unpackedEntries, thisAp.main, headerRow);
             } else if (eventData.type == MessageType.CHECKIN_FAIL) {
                 this.statusIndicator(CheckinStatus.FAIL);
             }
@@ -127,7 +125,7 @@ export class AlliancePoints implements ITabApp {
         this.wsWrapper.sendMessage({type: type, lobbyID: this.lobbyID, password: this.pw, data: data});
     }
 
-    private unpackEntry(entryCore: any): Entry {
+    private unpackEntry(entryCore: SendableEntry) {
         let nation = this.game.getNationByTag(entryCore.nation);
         if (nation == null) {
             nation = OverrideNation.fabricateDummyNation("???", this.game)
@@ -146,7 +144,6 @@ export class AlliancePoints implements ITabApp {
         const sortSymbols = [" ⮝"," ⮟"];
         let focusedColumn: HTMLDivElement | null = null;
         headerRow.pointsPanel.textContent = "Points";
-        //headerRow.flagPanel.textContent = "Flag";
         headerRow.namePanel.textContent = "Nation";
         headerRow.playerPanel.textContent = "Player";
         const thisActually = this;
@@ -324,7 +321,7 @@ export class AlliancePoints implements ITabApp {
         });
     }
 
-    private getPopupContainer() {
+    private static getPopupContainer() {
         const popupCover = document.createElement("div");
         const popup = document.createElement("div");
         popupCover.classList.add("popup-screencover");
@@ -341,7 +338,7 @@ export class AlliancePoints implements ITabApp {
     }
 
     private popupDiscordUserSelectorTable(callback: (user: DiscordUser) => void) {
-        const {popupCover, popup} = this.getPopupContainer();
+        const {popupCover, popup} = AlliancePoints.getPopupContainer();
         const table = new ImageSelectionTable("Select User", 6, (user: DiscordUser) => {
             callback(user);
             document.body.removeChild(popupCover);
@@ -355,7 +352,7 @@ export class AlliancePoints implements ITabApp {
     }
 
     private popupNationSelectorTable(callback: (nation: Nation) => void) {
-        const {popupCover, popup} = this.getPopupContainer();
+        const {popupCover, popup} = AlliancePoints.getPopupContainer();
         if (this.cachedNationTable == null) {
             const table = new ImageSelectionTable("Select Nation", 6, (nation: Nation) => {
                 callback(nation);
@@ -376,7 +373,7 @@ export class AlliancePoints implements ITabApp {
     }
     
     private popupColonySelectorDialog(callback: (overlord: Nation, region: ColonialRegion)=> void) {
-        const {popupCover, popup} = this.getPopupContainer();
+        const {popupCover, popup} = AlliancePoints.getPopupContainer();
         const overlordTable = new ImageSelectionTable("Select Overlord", 6, (overlord: INation) => {
             document.body.removeChild(popupCover);
         });
@@ -387,16 +384,6 @@ export class AlliancePoints implements ITabApp {
         overlordTable.setElements(this.entries.map(e => e.getNation()));
         popup.appendChild(overlordTable.getPanel());
     }
-    
-    private triggerPopup(attachChildren: (popup: HTMLDivElement) => void): void {
-        const popupCover = document.createElement("div");
-        const popup = document.createElement("div");
-        popupCover.classList.add("popup-screencover");
-        popup.classList.add("popup");
-        popupCover.appendChild(popup);
-        document.body.appendChild(popupCover);
-        attachChildren(popup);
-    }
 
     private async reImportFromDiscord(): Promise<Entry[]> {
         return this.discord.reImportFromDiscord(this.nationGuesser, this.game);
@@ -405,7 +392,6 @@ export class AlliancePoints implements ITabApp {
     private setupInputs() {
         const inputParent = document.createElement("div");
         inputParent.classList.add("horizontal-container");
-        const thisAp = this;
         inputParent.appendChild(this.fabricateInputButtonCombo(["Lobby ID", "Password"], "📡", [false,false], [this.lobbyID, this.pw], (inputs) => {
             const lobbyID = inputs[0];
             const pw = inputs[1];
@@ -478,13 +464,17 @@ export class AlliancePoints implements ITabApp {
         toImage.textContent = "📷";
         extraButtonParent.appendChild(toImage);
 
+        const toMap = document.createElement("div");
+        toMap.textContent = "🗺️";
+        extraButtonParent.appendChild(toMap);
+
         const exportToClipboard = document.createElement("div");
-        exportToClipboard.textContent = "🡑📋"
+        exportToClipboard.textContent = "📋"
         extraButtonParent.appendChild(exportToClipboard);
         const thisAp = this;
         importFromDiscord.onclick = function() {
             thisAp.reImportFromDiscord().then((importedEntries) => {
-                const sorted = importedEntries.sort((a, b) => a.getNation().getName(thisAp.locUser).localeCompare(b.getNation().getName(thisAp.locUser)));
+                const sorted = importedEntries.sort((a, b) => a.getNation().getAlias().localeCompare(b.getNation().getAlias()));
                 thisAp.populateTable(sorted, thisAp.main, headerRow);
             });
         };
@@ -501,14 +491,31 @@ export class AlliancePoints implements ITabApp {
         };
         toImage.onclick = function() {
             document.fonts.ready.then(() => {
-                thisAp.exportAsImage("Bündnispunkte", false);
+                AlliancePoints.exportAsImage("Bündnispunkte", thisAp.entries);
             });
         };
-
+        toMap.onclick = function() {
+            const provinceId2Color = new Map<number, RGB>();
+            thisAp.game.getProvinces().forEach((p) => {
+                if (p.is1444Owned()) {
+                    const owner = p.get1444OwnerTag();
+                    provinceId2Color.set(p.getId(), thisAp.game.getTag2Color(owner)!);
+                } else {
+                    provinceId2Color.set(p.getId(), MapUtil.getUnownedColor(p));
+                }
+            });
+            new Skanderbeg("f8b478").getAllProvinceOwnerships().then((provinceId2OwnerTag) => {
+                for (let [id, tag] of provinceId2OwnerTag) {
+                    provinceId2Color.set(id, thisAp.game.getTag2Color(tag)!);
+                }
+                const interestingColors = thisAp.entries.map(e => thisAp.game.getTag2Color(e.getNation().getTag())!);
+                thisAp.exportToMap(provinceId2Color, interestingColors);
+            });
+        };
         return buttonParent;
     }
 
-    private exportAsImage(title: string, discordStyle: boolean) {
+    private static exportAsImage(title: string, entries: Entry[]) {
         const scale = 1;
         const flagScale = 0.8;
         const avatarScale = 0.6;
@@ -517,18 +524,18 @@ export class AlliancePoints implements ITabApp {
         const thick = 4;
         const thin = 1;
 
-        const pointSortedEntries = this.entries.slice().sort((a, b) => a.getNation().getAlias().localeCompare(b.getNation().getAlias()));
+        const pointSortedEntries = entries.slice().sort((a, b) => a.getNation().getAlias().localeCompare(b.getNation().getAlias()));
         pointSortedEntries.sort((a, b) => b.getPoints() - a.getPoints());	
         const canvas = document.createElement("canvas");
         const style = getComputedStyle(document.documentElement);
         const perRowHeight = scale * Number.parseInt(style.getPropertyValue("--points-row-height").replace("px", ""));
         const bigFontSize = (2 * perRowHeight/ 3);
         const fontSize = scale * Number.parseInt(style.getPropertyValue("--points-table-font-size").replace("px", ""));
-        const fontColor = style.getPropertyValue(discordStyle ? "--discord-font-color" : "--font-color");
-        const mainColor = style.getPropertyValue(discordStyle ? "--discord-background-color" : "--main-color");
+        const fontColor = style.getPropertyValue("--font-color");
+        const mainColor = style.getPropertyValue("--main-color");
         const headerPixelHeight = perRowHeight * 1.5;
-        canvas.height = headerPixelHeight + perRowHeight * this.entries.length;
-        canvas.width = scale * (900 + perRowHeight)
+        canvas.height = headerPixelHeight + perRowHeight * pointSortedEntries.length;
+        canvas.width = scale * 900 + perRowHeight;
         const ctx = canvas.getContext('2d')!;
         ctx.fillStyle = mainColor;
         ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -585,9 +592,23 @@ export class AlliancePoints implements ITabApp {
             ImageUtil.drawImage(ctx, userImageUrl, flagGuideX + 2.5 * imageSize + avatarSize + 2 * perRowHeight, headerPixelHeight + ((avatarSpacing)/2 + i) * perRowHeight, avatarSize, getCircularPolygonClipPath(), false);
             ctx.fillText(pointSortedEntries[i].getPlayer().getName(), flagGuideX + 2.5 * imageSize + avatarSize + 3 * perRowHeight, headerPixelHeight + i * perRowHeight + perRowHeight / 2);
         }
-        canvas.style.height = "800px";
+        canvas.style.height = "calc(100vh - 100px)";
         canvas.style.width = "auto";
         const {popupCover, popup} = this.getPopupContainer();
+        popup.appendChild(canvas);
+    }
+
+    private async exportToMap(provinceId2Color: Map<number, RGB>, interestingColors: RGB[]) {
+        const provinceColorToTargetColor = new Map<RGB, RGB>();
+        for (let province of this.game.getProvinces()) {
+            const provinceColorCode = province.getColorCode();
+            const targetColor = provinceId2Color.get(province.getId())!;
+            provinceColorToTargetColor.set(provinceColorCode, targetColor);
+        }
+        const canvas = await MapUtil.drawMap(provinceColorToTargetColor, interestingColors);
+        const {popupCover, popup} = AlliancePoints.getPopupContainer();
+        canvas.style.maxWidth = "calc(100vw - 200px)";
+        canvas.style.maxHeight = "auto";
         popup.appendChild(canvas);
     }
 }

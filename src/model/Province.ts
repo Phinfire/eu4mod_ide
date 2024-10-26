@@ -1,14 +1,19 @@
 import { PDXFileTreeNode } from "../parse/PdxTreeNode";
+import { RGB } from "../util/ImageUtil";
 import { GameDate } from "./GameDate";
 
 export class Province {
+
+    public static TERRAIN_OCEAN = "ocean";
+    public static TERRAIN_INLAND_OCEAN = "inland_ocean";
+    public static TERRAIN_IMPASSABLE_MOUNTAINS = "impassable_mountains";
 
     private owner1444: string | null = null;
     private tradeGood: string | null = null;
     private development: [number,number,number] = [0,0,0];
 
 
-    constructor(private id: number, private alias: string, private historyFileContent: PDXFileTreeNode) {
+    constructor(private id: number, private alias: string, private historyFileContent: PDXFileTreeNode, private terrain: string | null, private colorCode: RGB) {
         this.owner1444 = this.get1444TagOrNull();
         this.tradeGood = this.getValueForLastPreStartDateKey("trade_goods");
         this.development[0] = Number.parseInt(this.getValueForLastPreStartDateKey("base_tax")!); 
@@ -16,26 +21,37 @@ export class Province {
         this.development[2] = Number.parseInt(this.getValueForLastPreStartDateKey("base_manpower")!);
     }
 
+    public getColorCode() {
+        return this.colorCode;
+    }
+
     public getAlias() {
         return this.alias;
     }
 
     public getTradeGood() {
-
+        return this.tradeGood;
     }
 
     public getDevelopment(): [number,number,number] {
-        return [0,0,0];
+        return this.development;
     }
 
     public getId() {
         return this.id;
     }
 
+    public isInhabitable() {
+        return this.development.reduce((a,b) => a+b);
+    }
+
+    public isWasteland() {
+        return this.terrain == Province.TERRAIN_IMPASSABLE_MOUNTAINS;
+    }
+
     public is1444Owned() {
         return this.owner1444 != null;
     }
-
 
     public get1444OwnerTag() : string {
         if (this.owner1444== null) {

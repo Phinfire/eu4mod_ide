@@ -1,4 +1,4 @@
-.points-wrapper {
+.points-table {
     display: flex;
     flex-direction: column;
     justify-content: flex-start;
@@ -7,7 +7,7 @@
     height: 100%;
 }
 
-.points-table {
+.points-table-body {
     display: flex;
     flex-direction: column;
     justify-content: flex-start;
@@ -15,6 +15,7 @@
     overflow-y: auto;
     border: 1px solid var(--font-color);
     max-height: 70%;
+    border: 1px solid var(--font-color);
 }
 
 .points-table-row {
@@ -131,6 +132,7 @@
 }
 
 .parentofClickable > div {
+    user-select: none;
     cursor: pointer;
 }
 
