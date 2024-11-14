@@ -37,4 +37,21 @@ export class AppWrapper {
             tab.classList.add('app-tab-selected');
         });
     }
+
+    public static getPopupContainer(canClickAway: boolean = true) {
+        const popupCover = document.createElement("div");
+        const popup = document.createElement("div");
+        popupCover.classList.add("popup-screencover");
+        popup.classList.add("popup");
+        popupCover.appendChild(popup);
+        document.body.appendChild(popupCover);
+        const exitFunction = () => {
+            document.body.removeChild(popupCover);
+        };
+        popupCover.onclick = canClickAway ? exitFunction : null;
+        popup.onclick = function(event) {
+            event.stopPropagation();
+        };
+        return {popupCover: popupCover, popup: popup, exitFunction: exitFunction};
+    }
 }

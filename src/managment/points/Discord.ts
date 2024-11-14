@@ -18,9 +18,9 @@ export class Discord {
     private rootUrl: string = Constants.API_URL;
 
     private cachedDiscordUsers: Map<string, DiscordUser> = new Map<string, DiscordUser>();
-
+    
     constructor() {
-
+        
     }
 
     public messageContentToEntries(messageContent: string, nationGuesser: Guesser, game: Game) : Entry[] {
@@ -145,6 +145,9 @@ export class Discord {
     }
 
     public getCachedDiscordUsers() : Map<string, DiscordUser> {
+        if (this.cachedDiscordUsers.size == 0) {
+            throw new Error("No users cached");
+        }
         return this.cachedDiscordUsers;
     }
 }

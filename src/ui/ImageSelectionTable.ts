@@ -1,9 +1,6 @@
 import { IHasImage } from "../model/IHasImage";
-import { IHasLocalisableName } from "../model/IHasName";
-import { AbstractLocalisationUser } from "../model/localisation/AbstractLocalisationUser";
-import { ILocalisationProvider } from "../model/localisation/ILocalizationProvider";
 
-export class ImageSelectionTable<T extends IHasImage & IHasLocalisableName> extends AbstractLocalisationUser {
+export class ImageSelectionTable<T extends IHasImage> {
 
     static readonly EMPTY_FILTER = "Type name here";
 
@@ -17,12 +14,9 @@ export class ImageSelectionTable<T extends IHasImage & IHasLocalisableName> exte
 
     private panelTitle;
     private filterString = "";
-    private allNations: T[] = [];
-    private filterOkNations: T[] = [];
-    private numVisibleNations = 0;
+    private allElements: T[] = [];
 
-    constructor(panelTitle: string, columns: number, selectionCallback: (selectedElement: T) => void) {
-        super();
+    constructor(panelTitle: string, columns: number, private nameFunction: (element: T) => string, selectionCallback: (selectedElement: T) => void) {
         this.panelTitle = panelTitle;
         this.panel = document.createElement("div");
         const top = document.createElement("div");
@@ -76,8 +70,10 @@ export class ImageSelectionTable<T extends IHasImage & IHasLocalisableName> exte
     public refreshFilterState() {
         this.contentPanel.innerHTML = "";
         this.alreadyDisplayedNumberOfNations = 0;
-        const includedNations = this.allNations.filter(nation => this.filterString == ImageSelectionTable.EMPTY_FILTER || nation.getName(this).toLowerCase().startsWith(this.filterString.toLowerCase()))
-            .toSorted((a, b) => a.getName(this).localeCompare(b.getName(this)));
+        //const includedNations = this.allElements.filter(nation => this.filterString == ImageSelectionTable.EMPTY_FILTER || nation.getName(this).toLowerCase().startsWith(this.filterString.toLowerCase()))
+        //    .toSorted((a, b) => a.getName(this).localeCompare(b.getName(this)));
+        const includedNations = this.allElements.filter(nation => this.filterString == ImageSelectionTable.EMPTY_FILTER || this.nameFunction(nation).toLowerCase().startsWith(this.filterString.toLowerCase()))
+            .toSorted((a, b) => this.nameFunction(a).localeCompare(this.nameFunction(b)));
         this.panelTitlePanel.textContent = this.panelTitle + " (" + includedNations.length + ")";
         while(this.alreadyDisplayedNumberOfNations < includedNations.length) {
             this.displayElement(includedNations[this.alreadyDisplayedNumberOfNations]);        
@@ -101,12 +97,8 @@ export class ImageSelectionTable<T extends IHasImage & IHasLocalisableName> exte
         this.alreadyDisplayedNumberOfNations++;
     }
 
-    public setLocalisationProvider(provider: ILocalisationProvider) {
-        super.setLocalisationProvider(provider);
-    }
-
     public setElements(nations: T[]) {
-        this.allNations = nations;
+        this.allElements = nations;
         this.filterString = ImageSelectionTable.EMPTY_FILTER;
         this.refreshFilterState();
     }
@@ -117,5 +109,10 @@ export class ImageSelectionTable<T extends IHasImage & IHasLocalisableName> exte
 
     public setCallback(callback: (selectedElement: T) => void) {
         this.callback = callback;
+    }
+
+    public resetFilter() {
+        this.filterString = ImageSelectionTable.EMPTY_FILTER;
+        this.refreshFilterState();
     }
 }

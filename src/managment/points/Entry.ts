@@ -1,4 +1,7 @@
+import { Game } from "../../model/Game";
 import { INation } from "../../model/INation";
+import { OverrideNation } from "../../model/OverrideNation";
+import { Discord } from "./Discord";
 import { DiscordUser } from "./DiscordUser";
 
 export interface SendableEntry {
@@ -18,6 +21,18 @@ export class Entry {
     private valueChangeListeners: (() => void)[] = [];
 
     private objectId: string;
+
+    public static fromSendable(sendable: SendableEntry, game: Game, discord: Discord) {
+        let nation = game.getNationByTag(sendable.nation);
+        if (nation == null) {
+            nation = OverrideNation.fabricateDummyNation("???", game)
+        }
+        let player = discord.getCachedDiscordUsers().get(sendable.player);
+        if (player == null) {
+            player = discord.getNewNoUserUser();
+        }
+        return new Entry(sendable.points, nation, player);
+    }
 
     constructor(private points: number, private nation: INation, private player: DiscordUser) {
         this.objectId = performance.now().toString() + Math.random().toString();
@@ -67,5 +82,9 @@ export class Entry {
             nation: this.nation.getTag(),
             player: this.player.getId()
         };
+    }
+
+    public clone() {
+        return new Entry(this.points, this.nation, this.player);
     }
 }

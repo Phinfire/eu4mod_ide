@@ -14,7 +14,7 @@
     align-items: center;
     overflow-y: auto;
     border: 1px solid var(--font-color);
-    max-height: 70%;
+    flex-grow: 1;
     border: 1px solid var(--font-color);
 }
 
@@ -51,8 +51,8 @@
 
 .points-table-top {
     height: var(--points-row-height);
-    padding-left: 1%;
-    padding-right: 1%;
+    padding-left: var(--points-row-height);
+    padding-right: var(--points-row-height);
     display: flex;
     flex-direction: row;
     justify-content: space-between;

@@ -35,6 +35,12 @@ export class WebSocketWrapper {
         }
     }
 
+    public rawSend(message: string): void {
+        if (this.socket) {
+            this.socket.send(message);
+        }
+    }
+
     public isReallyConnected(): boolean {
         return this.socket !== null && this.socket.readyState === WebSocket.OPEN;
     }

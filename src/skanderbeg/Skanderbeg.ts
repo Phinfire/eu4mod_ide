@@ -10,6 +10,10 @@ export class Skanderbeg {
         return this.identifier;
     }
 
+    public getUrl(): string {
+        return "https://skanderbeg.pm/browse.php?id=" + this.identifier;
+    }
+
     public hasProvincesData(): boolean {
         return this.provincesData !== null;
     }

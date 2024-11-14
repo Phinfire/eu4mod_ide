@@ -1,40 +1,20 @@
 import { createDiv, getCircularPolygonClipPath, getCoatOfArmsPolygonClipPath, getCookie, ifHasCookieValueGetElseSetAndReturn, setCookie, setupCoatOfArmsPolygonClipPath } from "../../utils";
 import { Discord } from "../points/Discord";
 import { Entry, SendableEntry } from "../points/Entry";
-import { Guesser } from "../INationGuesser";
 import { Nation } from "../../model/Nation";
 import { ImageSelectionTable } from "../../ui/ImageSelectionTable";
 import { Game } from "../../model/Game";
-import { ILocalisationProvider } from "../../model/localisation/ILocalizationProvider";
 import { AbstractLocalisationUser } from "../../model/localisation/AbstractLocalisationUser";
 import { INation } from "../../model/INation";
-import { ColonialRegion } from "../../model/ColonialRegion";
 import { DiscordUser } from "../points/DiscordUser";
-import { WebSocketWrapper } from "../WebsocketWrapper";
 import { OverrideNation } from "../../model/OverrideNation";
 import { ITabApp } from "../../ui/ITabApp";
-import { ImageUtil, RBGSet, RGB } from "../../util/ImageUtil";
+import { ImageUtil, RGB } from "../../util/ImageUtil";
 import { Skanderbeg } from "../../skanderbeg/Skanderbeg";
 import { MapUtil } from "../../MapUtil";
-
-enum CheckinStatus {
-    NONE,
-    OK,
-    FAIL,
-    SERVER_CLOSED
-}
-enum MessageType {    
-
-    INTRO = "intro", //TODO
-    DASHBOARD_DATA = "dashboard", //TODO
-
-    CHECKIN = "checkin",
-    REQUESTING_DATA = "request",
-    DATA_DELIVERY = "delivery",
-    DISCORD_DATA = "discord", // TODO
-    CHECKIN_OK = "checkinok",
-    CHECKIN_FAIL = "checkinfail"
-}
+import { Lobby } from "../lobbies/Lobby";
+import { AppWrapper } from "../../ui/AppWrapper";
+import { UIFactory } from "../../UIFactory";
 
 export class AlliancePoints implements ITabApp {
 
@@ -43,57 +23,49 @@ export class AlliancePoints implements ITabApp {
     private filterDirection = 1;
     private main: HTMLDivElement;
     private pointsWrapper: HTMLDivElement;
-    private locUser: AbstractLocalisationUser;
-    private entries: Entry[] = [];
 
-    private pw: string;
-    private lobbyID: string;
     private cachedNationTable: ImageSelectionTable<Nation> | null = null;
+    private cachedUserTable: ImageSelectionTable<DiscordUser> | null = null;
+    
+    private lobby: Lobby | null = null;
+    private headerRow;
+    private focusedColumn: HTMLDivElement | null = null;
 
-    private discord = new Discord();
-
-    private wsWrapper: WebSocketWrapper;
-    private statusIndicator: (status: CheckinStatus) => void = () => {};
-
-    constructor(socketUrl: string, private locProvider: ILocalisationProvider, private nationGuesser: Guesser, private game: Game) {
+    constructor(private locUser: AbstractLocalisationUser, private game: Game, private discord: Discord, private onEscape: () => void, private onAnyChange: (lobby: Lobby) => void) {
         this.pointsWrapper = document.createElement('div');
         this.pointsWrapper.classList.add("points-table");
-
-        this.locUser = new class extends AbstractLocalisationUser  {
-        };
-        this.locUser.setLocalisationProvider(locProvider);
         this.main = createDiv("points-table-body");
-        const apThis = this;
-        const ws = new WebSocket(socketUrl);
-        
-        //TODO: send client id to server, get history,user config etc back
-        const userClientId = ifHasCookieValueGetElseSetAndReturn("app_client_id", Math.random().toString());
-        const initId = getCookie("ap_id");
-        const initPw = getCookie("ap_pw");
-        if (initId != null && initPw != null) {
-            this.lobbyID = initId
-            this.pw = initPw;
-        } else {
-            this.lobbyID = "";
-            this.pw = "";
-        }
-        this.discord.importUsers().then((users) => {
-            
-        });
-        this.wsWrapper = new WebSocketWrapper(ws, (wsWrapper: WebSocketWrapper) => {
-            apThis.setupUI();
-        });
+        this.headerRow = this.setupUI();
+        this.pointsWrapper.ondragover = (ev) => {
+            ev.preventDefault();
+        };
+        this.pointsWrapper.ondrop = (ev) => {
+            ev.preventDefault();
+            const file = ev.dataTransfer!.files[0];
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const data = JSON.parse(reader.result as string) as SendableEntry[];
+                const entries = data.map(e => Entry.fromSendable(e, this.game, this.discord));
+                this.lobby!.setEntries(entries);
+                this.populateTable(this.main, this.headerRow);
+                this.onAnyChange(this.lobby!);
+            };
+            reader.readAsText(file);
+        };
     }
 
     getPanel(): HTMLDivElement {
         return this.pointsWrapper;
     }
 
+    public displayLobby(lobby: Lobby) {
+        this.lobby = lobby;
+        this.populateTable(this.main, this.headerRow);
+    }
+
     private setupUI() {
-        const thisAp = this;
         const tableHeader = createDiv("points-table-header");
         const headerheader = createDiv("points-table-top");
-        headerheader.appendChild(this.setupInputs());
         tableHeader.appendChild(headerheader);
         this.pointsWrapper.appendChild(tableHeader);
         const headerRow = this.buildRowStructure(true);
@@ -102,79 +74,46 @@ export class AlliancePoints implements ITabApp {
         this.perColComparator.set(headerRow.playerPanel, (e1, e2) => e1.getPlayer().getName().localeCompare(e2.getPlayer().getName()));
         tableHeader.appendChild(headerRow.row);
         this.pointsWrapper.appendChild(this.main);
-        headerheader.appendChild(this.setupButtons(this.wsWrapper, headerRow));
-        this.wsWrapper.setOnMessage(event =>  {
-            const eventData = JSON.parse(event.data);
-            if (eventData.type == MessageType.CHECKIN_OK) {
-                this.statusIndicator(CheckinStatus.OK);
-            }
-            if (eventData.type == MessageType.DATA_DELIVERY || eventData.type == MessageType.CHECKIN_OK) {
-                const packedEntries = eventData.data;
-                const unpackedEntries: Entry[] = [];
-                for (let entryCore of packedEntries) {
-                    unpackedEntries.push(this.unpackEntry(entryCore));
-                }
-                thisAp.populateTable(unpackedEntries, thisAp.main, headerRow);
-            } else if (eventData.type == MessageType.CHECKIN_FAIL) {
-                this.statusIndicator(CheckinStatus.FAIL);
-            }
-        });
-    }
-
-    private sendAuthorizedMessage(type: MessageType, data: SendableEntry[]) {
-        this.wsWrapper.sendMessage({type: type, lobbyID: this.lobbyID, password: this.pw, data: data});
-    }
-
-    private unpackEntry(entryCore: SendableEntry) {
-        let nation = this.game.getNationByTag(entryCore.nation);
-        if (nation == null) {
-            nation = OverrideNation.fabricateDummyNation("???", this.game)
-        }
-        let player = this.discord.getCachedDiscordUsers().get(entryCore.player);
-        if (player == null) {
-            player = this.discord.getNewNoUserUser();
-        }
-        return new Entry(entryCore.points, nation, player);
-    }
-
-    
-    public populateTable(entriesArg: Entry[], main: HTMLDivElement, headerRow: {row: HTMLDivElement, pointsPanel: HTMLDivElement, buttonPanel: HTMLDivElement, flagPanel: HTMLDivElement, namePanel: HTMLDivElement, playerPanel: HTMLDivElement}) {
-        this.entries = entriesArg;
-        main.innerHTML = "";
-        const sortSymbols = [" ⮝"," ⮟"];
-        let focusedColumn: HTMLDivElement | null = null;
+        headerheader.appendChild(this.setupButtons(headerRow));
+        const thisActually = this;
+        const sortSymbols = [UIFactory.SORT_SYMBOL_ARROW_UP, UIFactory.SORT_SYMBOL_ARROW_DOWN].map(s => " " + s);
         headerRow.pointsPanel.textContent = "Points";
         headerRow.namePanel.textContent = "Nation";
         headerRow.playerPanel.textContent = "Player";
-        const thisActually = this;
         for (let column of this.perColComparator.keys()) {
-            column.onclick = function() {   
+            column.onclick = function() {
                 const rawComparator = thisActually.perColComparator.get(column)!;
-                if (focusedColumn != null) {
-                    const prev = focusedColumn.textContent!;
-                    focusedColumn.textContent = prev.substring(0, prev.length - sortSymbols[0].length);
+                if (thisActually.focusedColumn != null) {
+                    const prev = thisActually.focusedColumn.textContent!;
+                    thisActually.focusedColumn.textContent = prev.substring(0, prev.length - sortSymbols[0].length);
                 }
-                thisActually.filterDirection = focusedColumn == column ? -thisActually.filterDirection : 1;
-                focusedColumn = column;
+                thisActually.filterDirection = thisActually.focusedColumn == column ? -thisActually.filterDirection : 1;
+                thisActually.focusedColumn = column;
                 column.textContent = column.textContent + sortSymbols[thisActually.filterDirection == 1 ? 0 : 1];
                 thisActually.comparator = (e1, e2) => thisActually.filterDirection == -1 ? rawComparator(e2, e1) : rawComparator(e1, e2);
-                thisActually.sortRows(thisActually.entries);
+                thisActually.sortRows(thisActually.lobby!.getEntries());
             };
         }
-        headerRow.namePanel.click();
-        for (let entry of this.entries) {
+        return headerRow;
+    }
+    
+    public populateTable(main: HTMLDivElement, headerRow: {row: HTMLDivElement, pointsPanel: HTMLDivElement, buttonPanel: HTMLDivElement, flagPanel: HTMLDivElement, namePanel: HTMLDivElement, playerPanel: HTMLDivElement}) {
+        main.innerHTML = "";
+        const thisActually = this;
+        for (let entry of this.lobby!.getEntries()) {
             const div = this.setupTableEntry(entry, () => {
-                this.sendAuthorizedMessage(MessageType.DATA_DELIVERY, this.entries.map(e => e.toSendable()));
+                this.onAnyChange(this.lobby!);
             }, (e: Entry) => {
-                const newEntries = this.entries.filter(e2 => e2 != e);
-                this.populateTable(newEntries, main, headerRow);
+                const newEntries = this.lobby!.getEntries().filter(e2 => e2 != e);
+                this.lobby!.setEntries(newEntries);
+                this.populateTable(main, headerRow);
+                this.onAnyChange(this.lobby!);
             });
             main.appendChild(div);
             entry.div = div;
-            entry.addValueChangeListener(() => thisActually.sortRows(this.entries));
+            entry.addValueChangeListener(() => thisActually.sortRows(this.lobby!.getEntries()));
         }
-        headerRow.namePanel.click();
-        headerRow.namePanel.click();
+        this.sortRows(this.lobby!.getEntries());
     }
 
     private setupTableEntry(entry: Entry, sender: () => void, removeEntry: (e: Entry) => void) {
@@ -203,10 +142,8 @@ export class AlliancePoints implements ITabApp {
             entry.setPoints(entry.getPoints() - 1);
             sender();
         };
-        const thisAp = this;
         removalPanel.onclick = function() {
             removeEntry(entry);
-            sender();
         };
         buttonPanel.appendChild(up);
         buttonPanel.appendChild(upDownSeparator);
@@ -284,13 +221,13 @@ export class AlliancePoints implements ITabApp {
     }
 
     private async exportToClipboard() {
-        const localEntries = this.entries.slice();
+        const localEntries = this.lobby!.getEntries().slice();
         localEntries.sort(this.comparator);
         const maxLen = localEntries.map((e) => e.getNation().getAlias().length).reduce((a, b) => Math.max(a, b), 0);
         const entryToLine = (e: Entry) => e.getPoints().toString().padEnd(2) + " " + e.getNation().getAlias().padEnd(maxLen) + " <@" + e.getPlayer().getId() + ">";
-        let result = "_";
+        let result = "_\n";
         for (let i = 0; i < localEntries.length; i++) {
-            if (i == 0 || this.comparator(localEntries[i], localEntries[i - 1]) != 0) {
+            if (i > 0 || this.comparator(localEntries[i], localEntries[i - 1]) != 0) {
                 result += "\n";
             }
             result += "\n" + entryToLine(localEntries[i]);   
@@ -321,30 +258,12 @@ export class AlliancePoints implements ITabApp {
         });
     }
 
-    private static getPopupContainer() {
-        const popupCover = document.createElement("div");
-        const popup = document.createElement("div");
-        popupCover.classList.add("popup-screencover");
-        popup.classList.add("popup");
-        popupCover.appendChild(popup);
-        document.body.appendChild(popupCover);
-        popupCover.onclick = function() {
-            document.body.removeChild(popupCover);
-        };
-        popup.onclick = function(event) {
-            event.stopPropagation();
-        };
-        return {popupCover: popupCover, popup: popup};
-    }
-
     private popupDiscordUserSelectorTable(callback: (user: DiscordUser) => void) {
-        const {popupCover, popup} = AlliancePoints.getPopupContainer();
-        const table = new ImageSelectionTable("Select User", 6, (user: DiscordUser) => {
+        const {popupCover, popup} = AppWrapper.getPopupContainer();
+        const table = new ImageSelectionTable("Select User", 6, (user: DiscordUser) => user.getName(), (user: DiscordUser) => {
             callback(user);
             document.body.removeChild(popupCover);
         });
-        table.setLocalisationProvider(this.locProvider);
-        table.setLocalisationProvider(this.locProvider);
         table.getPanel().style.width = "400px";
         table.getPanel().style.height = "400px";
         table.setElements(Array.from(this.discord.getCachedDiscordUsers().values()));
@@ -352,14 +271,13 @@ export class AlliancePoints implements ITabApp {
     }
 
     private popupNationSelectorTable(callback: (nation: Nation) => void) {
-        const {popupCover, popup} = AlliancePoints.getPopupContainer();
+        const {popupCover, popup} = AppWrapper.getPopupContainer();
         if (this.cachedNationTable == null) {
-            const table = new ImageSelectionTable("Select Nation", 6, (nation: Nation) => {
+            const table = new ImageSelectionTable("Select Nation", 6, (nation: INation) => nation.getName(this.locUser), (nation: Nation) => {
                 callback(nation);
                 document.body.removeChild(popupCover);
+                table.resetFilter();
             });
-            table.setLocalisationProvider(this.locProvider);
-            table.setLocalisationProvider(this.locProvider);
             table.getPanel().style.width = "400px";
             table.getPanel().style.height = "400px";
             table.setElements(this.game.getAllNations());
@@ -371,86 +289,25 @@ export class AlliancePoints implements ITabApp {
             document.body.removeChild(popupCover);
         });
     }
-    
-    private popupColonySelectorDialog(callback: (overlord: Nation, region: ColonialRegion)=> void) {
-        const {popupCover, popup} = AlliancePoints.getPopupContainer();
-        const overlordTable = new ImageSelectionTable("Select Overlord", 6, (overlord: INation) => {
-            document.body.removeChild(popupCover);
-        });
-        overlordTable.setLocalisationProvider(this.locProvider);
-        overlordTable.setLocalisationProvider(this.locProvider);
-        overlordTable.getPanel().style.width = "400px";
-        overlordTable.getPanel().style.height = "400px";
-        overlordTable.setElements(this.entries.map(e => e.getNation()));
-        popup.appendChild(overlordTable.getPanel());
-    }
 
-    private async reImportFromDiscord(): Promise<Entry[]> {
-        return this.discord.reImportFromDiscord(this.nationGuesser, this.game);
-    }
-
-    private setupInputs() {
-        const inputParent = document.createElement("div");
-        inputParent.classList.add("horizontal-container");
-        inputParent.appendChild(this.fabricateInputButtonCombo(["Lobby ID", "Password"], "📡", [false,false], [this.lobbyID, this.pw], (inputs) => {
-            const lobbyID = inputs[0];
-            const pw = inputs[1];
-            this.lobbyID = lobbyID;
-            this.pw = pw;
-            setCookie("ap_id", lobbyID, 30);
-            setCookie("ap_pw", pw, 30);
-            this.sendAuthorizedMessage(MessageType.CHECKIN, []);
-        }));
-        this.statusIndicator = (status: CheckinStatus) => {
-            const target = inputParent.firstChild!.lastChild as HTMLDivElement;
-            if (status == CheckinStatus.OK) {
-                target.textContent = "✅";
-            } else if (status == CheckinStatus.FAIL) {
-                target.textContent = "❌";
-            } else if (status == CheckinStatus.SERVER_CLOSED) {
-                target.textContent = "💀";
-            } else if (status == CheckinStatus.NONE) {
-                target.textContent = "📡";
-            }
-        };
-        return inputParent;
-    }
-
-    private fabricateInputButtonCombo(placeholder: string[], buttonText: string, isSecret: boolean[], initialValues: string[], buttonCallback: (inputValues: string[]) => void) {
-        const comboWrapper = document.createElement("div");
-        comboWrapper.classList.add("horizontal-container");
-        comboWrapper.classList.add("points-ui-input-combo");
-        for (let i = 0; i < placeholder.length; i++) {
-            const input = document.createElement("input");
-            input.type = isSecret[i] ? "password" : "text";
-            input.placeholder = placeholder[i];
-            input.value = initialValues[i];
-            comboWrapper.appendChild(input);
-        }
-        const button = document.createElement("div");
-        button.textContent = buttonText;
-        comboWrapper.appendChild(button);
-        button.onclick = function() {
-            buttonCallback(Array.from(comboWrapper.children).filter((c) => c instanceof HTMLInputElement).map((c) => (c as HTMLInputElement).value));
-        };
-        return comboWrapper;
-    }
-
-    private setupButtons(ws: WebSocketWrapper, headerRow: {row: HTMLDivElement, pointsPanel: HTMLDivElement, buttonPanel: HTMLDivElement, flagPanel: HTMLDivElement, namePanel: HTMLDivElement, playerPanel: HTMLDivElement}) {
+    private setupButtons(headerRow: {row: HTMLDivElement, pointsPanel: HTMLDivElement, buttonPanel: HTMLDivElement, flagPanel: HTMLDivElement, namePanel: HTMLDivElement, playerPanel: HTMLDivElement}) {
         const buttonParent = document.createElement("div");
+        const appButtonParent = document.createElement("div");
         const editingButtonParent = document.createElement("div");
         const extraButtonParent = document.createElement("div");
         buttonParent.classList.add("horizontal-container");
         buttonParent.classList.add("points-ui-button-panel");
+        buttonParent.appendChild(appButtonParent);
         buttonParent.appendChild(editingButtonParent);
         buttonParent.appendChild(extraButtonParent);
-        for (let parent of [editingButtonParent, extraButtonParent]) {
+        for (let parent of [appButtonParent, editingButtonParent, extraButtonParent]) {
             parent.classList.add("horizontal-container");
             parent.classList.add("parentofClickable");
         }
-        const importFromDiscord = document.createElement("div");	
-        importFromDiscord.textContent = "🡓DC";
-        editingButtonParent.appendChild(importFromDiscord);
+        const homeButton = document.createElement("div");
+        homeButton.textContent = "🏠";
+        appButtonParent.appendChild(homeButton);
+        homeButton.onclick = this.onEscape;
 
         const addEntryButton = document.createElement("div");
         addEntryButton.textContent = "➕";
@@ -471,95 +328,101 @@ export class AlliancePoints implements ITabApp {
         const exportToClipboard = document.createElement("div");
         exportToClipboard.textContent = "📋"
         extraButtonParent.appendChild(exportToClipboard);
-        const thisAp = this;
-        importFromDiscord.onclick = function() {
-            thisAp.reImportFromDiscord().then((importedEntries) => {
-                const sorted = importedEntries.sort((a, b) => a.getNation().getAlias().localeCompare(b.getNation().getAlias()));
-                thisAp.populateTable(sorted, thisAp.main, headerRow);
-            });
+
+        const exportToJson = document.createElement("div");
+        exportToJson.textContent = "{}";
+        extraButtonParent.appendChild(exportToJson);
+        exportToJson.onclick = function() {
+            thisAp.downloadAsJson();
         };
+
+        const thisAp = this;
         exportToClipboard.onclick = function() {
             thisAp.exportToClipboard();
         };
         addEntryButton.onclick = function() {
             const newEntry = new Entry(Entry.DEFAULT_POINTS, OverrideNation.fabricateDummyNation("???", thisAp.game), thisAp.discord.getNewNoUserUser());
-            const newEntries = thisAp.entries.concat([newEntry]);
-            thisAp.populateTable(newEntries, thisAp.main, headerRow);
+            const newEntries = thisAp.lobby!.getEntries().concat([newEntry]);
+            thisAp.lobby!.setEntries(newEntries);
+            thisAp.populateTable(thisAp.main, headerRow);
         };
         addColonialEntryButton.onclick = function() {
             
         };
         toImage.onclick = function() {
             document.fonts.ready.then(() => {
-                AlliancePoints.exportAsImage("Bündnispunkte", thisAp.entries);
+                const canvas = AlliancePoints.exportAsImage("Bündnispunkte", thisAp.lobby!.getEntries());
+                const {popupCover, popup} = AppWrapper.getPopupContainer();
+                popup.appendChild(canvas);
             });
         };
         toMap.onclick = function() {
-            const provinceId2Color = new Map<number, RGB>();
-            thisAp.game.getProvinces().forEach((p) => {
-                if (p.is1444Owned()) {
-                    const owner = p.get1444OwnerTag();
-                    provinceId2Color.set(p.getId(), thisAp.game.getTag2Color(owner)!);
-                } else {
-                    provinceId2Color.set(p.getId(), MapUtil.getUnownedColor(p));
-                }
-            });
-            new Skanderbeg("f8b478").getAllProvinceOwnerships().then((provinceId2OwnerTag) => {
-                for (let [id, tag] of provinceId2OwnerTag) {
-                    provinceId2Color.set(id, thisAp.game.getTag2Color(tag)!);
-                }
-                const interestingColors = thisAp.entries.map(e => thisAp.game.getTag2Color(e.getNation().getTag())!);
-                thisAp.exportToMap(provinceId2Color, interestingColors);
-            });
+            if (thisAp.lobby!.hasSkanderbegIdentifier()) {
+                const provinceId2Color = new Map<number, RGB>();
+                thisAp.game.getProvinces().forEach((p) => {
+                    if (p.is1444Owned()) {
+                        const owner = p.get1444OwnerTag();
+                        provinceId2Color.set(p.getId(), thisAp.game.getTag2Color(owner)!);
+                    } else {
+                        provinceId2Color.set(p.getId(), MapUtil.getUnownedColor(p));
+                    }
+                });
+                new Skanderbeg(thisAp.lobby!.getAssociatedSkanderbegIdentifier()).getAllProvinceOwnerships().then((provinceId2OwnerTag) => {
+                    for (let [id, tag] of provinceId2OwnerTag) {
+                        provinceId2Color.set(id, thisAp.game.getTag2Color(tag)!);
+                    }
+                    const interestingColors = thisAp.lobby!.getEntries().map(e => thisAp.game.getTag2Color(e.getNation().getTag())!);
+                    thisAp.exportToMap(provinceId2Color, interestingColors);
+                });
+            }
         };
         return buttonParent;
     }
 
-    private static exportAsImage(title: string, entries: Entry[]) {
+    private static exportAsImage(title: string, entries: Entry[], includeUsers: boolean = true, includePoints: boolean = true) {
         const scale = 1;
         const flagScale = 0.8;
         const avatarScale = 0.6;
-        const avatarSpacing = 1 - avatarScale;
         const fontFamily = "Inter";
         const thick = 4;
         const thin = 1;
 
         const pointSortedEntries = entries.slice().sort((a, b) => a.getNation().getAlias().localeCompare(b.getNation().getAlias()));
         pointSortedEntries.sort((a, b) => b.getPoints() - a.getPoints());	
-        const canvas = document.createElement("canvas");
         const style = getComputedStyle(document.documentElement);
         const perRowHeight = scale * Number.parseInt(style.getPropertyValue("--points-row-height").replace("px", ""));
         const bigFontSize = (2 * perRowHeight/ 3);
         const fontSize = scale * Number.parseInt(style.getPropertyValue("--points-table-font-size").replace("px", ""));
-        const fontColor = style.getPropertyValue("--font-color");
-        const mainColor = style.getPropertyValue("--main-color");
+        const textColor = style.getPropertyValue("--font-color");
+        const backgroundColor = style.getPropertyValue("--main-color");
         const headerPixelHeight = perRowHeight * 1.5;
+
+        // background & frame
+        const canvas = document.createElement("canvas");
         canvas.height = headerPixelHeight + perRowHeight * pointSortedEntries.length;
         canvas.width = scale * 900 + perRowHeight;
         const ctx = canvas.getContext('2d')!;
-        ctx.fillStyle = mainColor;
+        ctx.fillStyle = backgroundColor;
         ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.fillStyle = fontColor;
-        ctx.strokeStyle = fontColor;
+        ctx.fillStyle = textColor;
+        ctx.strokeStyle = textColor;
         ctx.lineWidth = thick;
         ctx.strokeRect(0+thick/2, 0 + thick/2, canvas.width - thick/2 - 1, canvas.height - thick/2 - 1);
 
+        // row lines
         ctx.font = bigFontSize + "px " + fontFamily;
-        ctx.textAlign = "center";
+        ctx.textAlign = "center";   
         ctx.textBaseline = "middle";
         ctx.fillText(title, canvas.width / 2, 0.6 * headerPixelHeight);
         for (let i = 0; i < pointSortedEntries.length; i++) {
             ctx.lineWidth = i != 0 && pointSortedEntries[i].getPoints() === pointSortedEntries[i - 1].getPoints() ? thin : thick;
-            console.log(i + " " + ctx.lineWidth);
             ctx.beginPath();
             ctx.moveTo(0, headerPixelHeight + i * perRowHeight);
             ctx.lineTo(canvas.width, headerPixelHeight + i * perRowHeight);
             ctx.stroke();
         }
+        // line separating index and entry
         ctx.lineWidth = thin
-        ctx.font = bigFontSize + "px " + fontFamily;
-        ctx.textBaseline = "middle";    
-        const flagGuideX = 2 * perRowHeight;
         ctx.globalAlpha = 0.25;
         ctx.beginPath();
         ctx.moveTo(perRowHeight, headerPixelHeight);
@@ -569,33 +432,31 @@ export class AlliancePoints implements ITabApp {
 
         for (let i = 0; i < pointSortedEntries.length; i++) {
             ctx.font = fontSize + "px " + fontFamily;
-            ctx.fillStyle = fontColor;
+            ctx.fillStyle = textColor;
             ctx.textBaseline = "middle";
             ctx.textAlign = "center";
             ctx.globalAlpha = 0.5;
             ctx.fillText((i + 1).toString(), perRowHeight/2, headerPixelHeight + i * perRowHeight + perRowHeight / 2);
             ctx.globalAlpha = 1;
 
-            ctx.textBaseline = "middle";    
             ctx.textAlign = "right";
             ctx.font = bigFontSize + "px " + fontFamily;
             if (i == 0 || pointSortedEntries[i].getPoints() != pointSortedEntries[i - 1].getPoints()) {
-                ctx.fillText(pointSortedEntries[i].getPoints().toString(), flagGuideX, headerPixelHeight + i * perRowHeight + perRowHeight / 2);
+                ctx.fillText(pointSortedEntries[i].getPoints().toString(), 2 * perRowHeight, headerPixelHeight + i * perRowHeight + perRowHeight / 2);
             }
             const imageSize = perRowHeight * flagScale;
-            ImageUtil.drawImage(ctx, pointSortedEntries[i].getNation().makeImage().src, flagGuideX + imageSize, headerPixelHeight + ((1 - flagScale)/2 + i) * perRowHeight, imageSize, getCoatOfArmsPolygonClipPath(), false);
+            ImageUtil.drawImage(ctx, pointSortedEntries[i].getNation().makeImage().src, 2 * perRowHeight + imageSize, headerPixelHeight + ((1 - flagScale)/2 + i) * perRowHeight, imageSize, getCoatOfArmsPolygonClipPath(), false);
             ctx.textAlign = "left";
             ctx.font = fontSize + "px " + fontFamily;
-            ctx.fillText(pointSortedEntries[i].getNation().getAlias(), flagGuideX + 3 * imageSize, headerPixelHeight + i * perRowHeight + perRowHeight / 2);
+            ctx.fillText(pointSortedEntries[i].getNation().getAlias(), 2 * perRowHeight + 3 * imageSize, headerPixelHeight + i * perRowHeight + perRowHeight / 2);
             const userImageUrl = pointSortedEntries[i].getPlayer().makeAvatarImage().src;
             const avatarSize = perRowHeight * avatarScale;
-            ImageUtil.drawImage(ctx, userImageUrl, flagGuideX + 2.5 * imageSize + avatarSize + 2 * perRowHeight, headerPixelHeight + ((avatarSpacing)/2 + i) * perRowHeight, avatarSize, getCircularPolygonClipPath(), false);
-            ctx.fillText(pointSortedEntries[i].getPlayer().getName(), flagGuideX + 2.5 * imageSize + avatarSize + 3 * perRowHeight, headerPixelHeight + i * perRowHeight + perRowHeight / 2);
+            ImageUtil.drawImage(ctx, userImageUrl, 2 * perRowHeight + 2.5 * imageSize + avatarSize + 2 * perRowHeight, headerPixelHeight + ((1 - avatarScale)/2 + i) * perRowHeight, avatarSize, getCircularPolygonClipPath(), false);
+            ctx.fillText(pointSortedEntries[i].getPlayer().getName(), 2 * perRowHeight + 2.5 * imageSize + avatarSize + 3 * perRowHeight, headerPixelHeight + i * perRowHeight + perRowHeight / 2);
         }
         canvas.style.height = "calc(100vh - 100px)";
         canvas.style.width = "auto";
-        const {popupCover, popup} = this.getPopupContainer();
-        popup.appendChild(canvas);
+        return canvas;
     }
 
     private async exportToMap(provinceId2Color: Map<number, RGB>, interestingColors: RGB[]) {
@@ -606,9 +467,23 @@ export class AlliancePoints implements ITabApp {
             provinceColorToTargetColor.set(provinceColorCode, targetColor);
         }
         const canvas = await MapUtil.drawMap(provinceColorToTargetColor, interestingColors);
-        const {popupCover, popup} = AlliancePoints.getPopupContainer();
+        const {popupCover, popup} = AppWrapper.getPopupContainer();
         canvas.style.maxWidth = "calc(100vw - 200px)";
         canvas.style.maxHeight = "auto";
         popup.appendChild(canvas);
+    }
+
+    private downloadAsJson() {
+        if (this.lobby != null) {
+            const data = this.lobby!.getEntries().map(e => e.toSendable());
+            const blob = new Blob([JSON.stringify(data)], {type: 'application/json'});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = this.lobby!.login.name + "_" + new Date().toISOString().replace(/:/g, "-").split("T")[0] + ".json";
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+        }
     }
 }

@@ -33,7 +33,7 @@ export class Game {
             for (const key of result.getChildren().keys()) {
                 const entry = result.getChildren().get(key)!;
                 if (!entry.getKeyValueLeaves().has("trigger")) {
-                    console.log("??? " + key);
+                    //console.log("??? " + key);
                 }
             }
             this.ideaFileCache.set(fileName, result);
@@ -129,7 +129,7 @@ export class Game {
             }
             const typeNode = categories.getChildren().get(type)!;
             if (typeNode.getChildren().has("terrain_override")) {
-                console.log("Processing " + type + " " + typeNode.getChildren().get("terrain_override")!.getValueLeaves().length);
+                //console.log("Processing " + type + " " + typeNode.getChildren().get("terrain_override")!.getValueLeaves().length);
                 typeNode.getChildren().get("terrain_override")!.getValueLeaves().forEach((id: string) => {
                     provinceId2TerrainType.set(Number.parseInt(id), type);
                 });
@@ -161,7 +161,7 @@ export class Game {
                 return nation;
             }
         }
-        throw new Error("Could not find nation with tag " + tag);
+        return null;
     }
 
     private findIdeaSetForTag(tag: string, primaryCulture: string) {

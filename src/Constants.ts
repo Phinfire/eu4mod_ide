@@ -2,11 +2,11 @@ import { Language } from "./model/localisation/Language";
 
 export class Constants {
 
-    public static API_URL = "https://codingafterdark.de/api/"
+    public static readonly API_URL = "https://codingafterdark.de/api/"
 
-    public static WEBSERVER_URL = "https://codingafterdark.de/ide/"
+    public static readonly WEBSERVER_URL = "https://codingafterdark.de/ide/"
 
-    public static WEB_SOCKET_URL = "wss://codingafterdark.de/ws"
+    public static readonly WEB_SOCKET_URL = "wss://codingafterdark.de/ws"
     
     public static getSupportedLangages(): Language[] {
         return [Language.ENGLISH, Language.GERMAN];

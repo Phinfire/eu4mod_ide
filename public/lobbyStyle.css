@@ -1,0 +1,102 @@
+:root {
+    --lobby-panel-width: 350px;
+    --lobby-panel-height: calc(var(--lobby-panel-width)  / 2);
+    --sidebar-width: calc(0.2 * var(--lobby-panel-width));
+    --row-height: calc(var(--lobby-panel-height) / 10);
+}
+
+.lobbies-panel {
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    align-items: center;
+    width: 100%;
+    height: 100%;
+    padding: 50px;
+    box-sizing: border-box;
+}
+
+.lobby-wrapper {
+    display: flex;
+    flex-direction: row;
+    border: 2px solid var(--font-color);
+    width: var(--lobby-panel-width);
+    height: var(--lobby-panel-height);
+    user-select: none;
+    border-radius: 20px;
+    box-shadow: 0px 0px 10px 0px black;
+    margin: 10px;
+}
+
+.lobby-main {
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    width: calc(var(--lobby-panel-width) - var(--sidebar-width));
+    padding: var(--big-font-size) 0px 0px var(--big-font-size);
+}
+
+.lobby-main > table {
+    font-size: calc(0.5 * var(--big-font-size));
+    text-align: left;
+}
+
+.lobby-main-title {
+    overflow: hidden;
+    font-size: var(--big-font-size);
+    text-decoration: underline;
+    text-overflow: clip;
+    white-space: nowrap;
+    height: calc(1.5 * var(--big-font-size));
+}
+
+.lobby-sidebar {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-evenly;
+    height: 100%;
+    width: var(--sidebar-width);
+    text-align: center;
+    border-left: 1px solid var(--font-color);
+    border-radius: 0px 20px 20px 0px;
+    font-weight: bold;
+    font-size: var(--big-font-size);
+    align-items: center;
+}
+
+.lobby-sidebar > div {
+    display: flex;
+    width: calc(0.6 * var(--sidebar-width));
+    height: calc(0.6 * var(--sidebar-width));
+    font-size: calc(0.3 * var(--sidebar-width));
+    border: 2px solid var(--font-color);
+    border-radius: 50%;
+    justify-content: center;
+    align-items: center;
+    cursor: pointer;
+    background-color: var(--slightly-lighter-main-color);
+}
+
+.lobby-sidebar > div:hover {
+    filter: brightness(1.2);
+}
+
+.lobby-sidebar > div:active {
+    filter: brightness(0.5);
+}
+
+.lobby-adder {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-evenly;
+    align-items: center;
+    font-size: calc(3 * var(--big-font-size));
+}
+
+.lobby-adder:hover {
+    filter: brightness(1.2);
+}
+
+.lobby-adder:active {
+    filter: brightness(0.5);
+}
