@@ -5,6 +5,7 @@ import { NationalIdeaSet } from "../model/NationalIdeaSet";
 import { TooltipManager } from "./TooltipManager";
 import { Nation } from "../model/Nation";
 import { setupCoatOfArmsPolygonClipPath } from "../utils";
+import { INation } from "../model/INation";
 
 export class NationIdeasPanel extends AbstractLocalisationUser {
 
@@ -97,7 +98,9 @@ export class NationIdeasPanel extends AbstractLocalisationUser {
         return this.panel;
     }
 
-    public show(ideas: NationalIdeaSet, nation: Nation, flagUrl: string) {
+    public show(nation: INation) {
+        const ideas = nation.getIdeas();
+        const flagUrl = nation.getFlagImageUrl();
         this.modifiableIdeaSet = ideas;
         this.flagImage.src = flagUrl;
         this.namePanel.innerHTML = nation.getName(this);

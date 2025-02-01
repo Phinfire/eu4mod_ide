@@ -22,7 +22,7 @@ export class AlliancePoints implements ITabApp {
     private perColComparator = new Map<HTMLDivElement, ((e1: Entry, e2: Entry) => number)>();
     private filterDirection = 1;
     private main: HTMLDivElement;
-    private pointsWrapper: HTMLDivElement;
+    private pointsWrapper: HTMLDivElement;  
 
     private cachedNationTable: ImageSelectionTable<Nation> | null = null;
     private cachedUserTable: ImageSelectionTable<DiscordUser> | null = null;
@@ -30,6 +30,8 @@ export class AlliancePoints implements ITabApp {
     private lobby: Lobby | null = null;
     private headerRow;
     private focusedColumn: HTMLDivElement | null = null;
+
+    private nationNameFunc = (entry: Entry) => entry.getNation().getName(this.locUser);
 
     constructor(private locUser: AbstractLocalisationUser, private game: Game, private discord: Discord, private onEscape: () => void, private onAnyChange: (lobby: Lobby) => void) {
         this.pointsWrapper = document.createElement('div');
@@ -70,7 +72,7 @@ export class AlliancePoints implements ITabApp {
         this.pointsWrapper.appendChild(tableHeader);
         const headerRow = this.buildRowStructure(true);
         this.perColComparator.set(headerRow.pointsPanel, (e1, e2) => e1.getPoints() - e2.getPoints());
-        this.perColComparator.set(headerRow.namePanel, (e1, e2) => e1.getNation().getAlias().localeCompare(e2.getNation().getAlias()));
+        this.perColComparator.set(headerRow.namePanel, (e1, e2) => this.nationNameFunc(e1).localeCompare(this.nationNameFunc(e2)));
         this.perColComparator.set(headerRow.playerPanel, (e1, e2) => e1.getPlayer().getName().localeCompare(e2.getPlayer().getName()));
         tableHeader.appendChild(headerRow.row);
         this.pointsWrapper.appendChild(this.main);
@@ -121,7 +123,7 @@ export class AlliancePoints implements ITabApp {
         pointsPanel.textContent = entry.getPoints().toString();
         entry.addValueChangeListener(() => {
             pointsPanel.textContent = entry.getPoints().toString();
-            namePanel.textContent = entry.getNation().getAlias();
+            namePanel.textContent = this.locUser.localise(entry.getNation().getName(this.locUser));
             playerPicPanel.innerHTML = "";
             playerPicPanel.appendChild(entry.getPlayer().makeAvatarImage());
             playerPanel.textContent = entry.getPlayer().getName();
@@ -164,7 +166,7 @@ export class AlliancePoints implements ITabApp {
             });
         };
 
-        namePanel.textContent = entry.getNation().getAlias();
+        namePanel.textContent = this.locUser.localise(entry.getNation().getName(this.locUser));
         playerPanel.textContent = entry.getPlayer().getName();
 
         const playerPic = entry.getPlayer().makeAvatarImage();
@@ -214,24 +216,35 @@ export class AlliancePoints implements ITabApp {
         if (!isTitle) {
             const removalChild = document.createElement("div");
             removalPanel.appendChild(removalChild);
-            removalChild.textContent = "❌";
+            removalChild.textContent = UIFactory.RED_X;
             removalPanel = removalChild;    
         }
         return {row: row, indexPanel: indexPanel, pointsPanel: pointsPanel, buttonPanel: buttonPanel, flagPanel: flagPanel, namePanel: namePanel, playerPicPanel: playerPicPanel, playerPanel: playerPanel, removalPanel: removalPanel};
     }
 
-    private async exportToClipboard() {
+    private async exportAsText() {
         const localEntries = this.lobby!.getEntries().slice();
         localEntries.sort(this.comparator);
-        const maxLen = localEntries.map((e) => e.getNation().getAlias().length).reduce((a, b) => Math.max(a, b), 0);
-        const entryToLine = (e: Entry) => e.getPoints().toString().padEnd(2) + " " + e.getNation().getAlias().padEnd(maxLen) + " <@" + e.getPlayer().getId() + ">";
+        const maxLen = Math.max(...localEntries.map(e => this.nationNameFunc(e).length));
+        console.log(maxLen);
+        const entryToLine = (e: Entry) => e.getPoints().toString().padEnd(2) + " " + this.nationNameFunc(e).padEnd(maxLen) + " <@" + e.getPlayer().getId() + ">";
         let result = "_\n";
         for (let i = 0; i < localEntries.length; i++) {
-            if (i > 0 || this.comparator(localEntries[i], localEntries[i - 1]) != 0) {
+            if (i > 0 && this.comparator(localEntries[i], localEntries[i - 1]) != 0) {
                 result += "\n";
             }
             result += "\n" + entryToLine(localEntries[i]);   
         }
+        const popup = AppWrapper.getPopupContainer();
+        const textPanel  = document.createElement("textarea");
+        textPanel.value = result;
+        textPanel.style.width = "600px";
+        textPanel.style.height = "900px";
+        popup.popup.appendChild(textPanel);
+        textPanel.style.backgroundColor = "var(--main-color)";
+        textPanel.style.fontFamily = "monospace";
+        textPanel.innerHTML = result;
+        textPanel.readOnly = true;
         await navigator.clipboard.writeText(result);
         console.log(result);
     }
@@ -338,7 +351,7 @@ export class AlliancePoints implements ITabApp {
 
         const thisAp = this;
         exportToClipboard.onclick = function() {
-            thisAp.exportToClipboard();
+            thisAp.exportAsText();
         };
         addEntryButton.onclick = function() {
             const newEntry = new Entry(Entry.DEFAULT_POINTS, OverrideNation.fabricateDummyNation("???", thisAp.game), thisAp.discord.getNewNoUserUser());
@@ -351,7 +364,7 @@ export class AlliancePoints implements ITabApp {
         };
         toImage.onclick = function() {
             document.fonts.ready.then(() => {
-                const canvas = AlliancePoints.exportAsImage("Bündnispunkte", thisAp.lobby!.getEntries());
+                const canvas = thisAp.exportAsImage("Bündnispunkte", thisAp.lobby!.getEntries());
                 const {popupCover, popup} = AppWrapper.getPopupContainer();
                 popup.appendChild(canvas);
             });
@@ -379,7 +392,7 @@ export class AlliancePoints implements ITabApp {
         return buttonParent;
     }
 
-    private static exportAsImage(title: string, entries: Entry[], includeUsers: boolean = true, includePoints: boolean = true) {
+    private exportAsImage(title: string, entries: Entry[], includeUsers: boolean = true, includePoints: boolean = true) {
         const scale = 1;
         const flagScale = 0.8;
         const avatarScale = 0.6;
@@ -387,7 +400,7 @@ export class AlliancePoints implements ITabApp {
         const thick = 4;
         const thin = 1;
 
-        const pointSortedEntries = entries.slice().sort((a, b) => a.getNation().getAlias().localeCompare(b.getNation().getAlias()));
+        const pointSortedEntries = entries.slice().sort((a, b) => this.nationNameFunc(a).localeCompare(this.nationNameFunc(b)));
         pointSortedEntries.sort((a, b) => b.getPoints() - a.getPoints());	
         const style = getComputedStyle(document.documentElement);
         const perRowHeight = scale * Number.parseInt(style.getPropertyValue("--points-row-height").replace("px", ""));
@@ -448,7 +461,7 @@ export class AlliancePoints implements ITabApp {
             ImageUtil.drawImage(ctx, pointSortedEntries[i].getNation().makeImage().src, 2 * perRowHeight + imageSize, headerPixelHeight + ((1 - flagScale)/2 + i) * perRowHeight, imageSize, getCoatOfArmsPolygonClipPath(), false);
             ctx.textAlign = "left";
             ctx.font = fontSize + "px " + fontFamily;
-            ctx.fillText(pointSortedEntries[i].getNation().getAlias(), 2 * perRowHeight + 3 * imageSize, headerPixelHeight + i * perRowHeight + perRowHeight / 2);
+            ctx.fillText(this.nationNameFunc(pointSortedEntries[i]), 2 * perRowHeight + 3 * imageSize, headerPixelHeight + i * perRowHeight + perRowHeight / 2);
             const userImageUrl = pointSortedEntries[i].getPlayer().makeAvatarImage().src;
             const avatarSize = perRowHeight * avatarScale;
             ImageUtil.drawImage(ctx, userImageUrl, 2 * perRowHeight + 2.5 * imageSize + avatarSize + 2 * perRowHeight, headerPixelHeight + ((1 - avatarScale)/2 + i) * perRowHeight, avatarSize, getCircularPolygonClipPath(), false);
@@ -480,7 +493,7 @@ export class AlliancePoints implements ITabApp {
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = this.lobby!.login.name + "_" + new Date().toISOString().replace(/:/g, "-").split("T")[0] + ".json";
+            a.download = this.lobby!.login.name + "_" + new Date().toISOString() + ".json";
             document.body.appendChild(a);
             a.click();
             a.remove();

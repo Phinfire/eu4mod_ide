@@ -1,5 +1,4 @@
 import { Game } from "../model/Game";
-import { OverrideNation } from "../model/OverrideNation";
 import { Login } from "./ILogin";
 import { Lobby } from "./lobbies/Lobby";
 import { LobbyRespository } from "./LobbyRepository";
@@ -38,22 +37,21 @@ export class LobbyManagmentWebsocketHandler {
     
     private wsWrapper: WebSocketWrapper;
     private listeners: ((state: ServerStatus) => void)[] = [];
-    private messageListeners: ((message: any) => void)[] = [];
     
     constructor(socketUrl: string, private localLobbies: LobbyRespository, private userLogin: Login, private game: Game, private discord: Discord) {
         const ws = new WebSocket(socketUrl);
         this.wsWrapper = new WebSocketWrapper(ws, (wsWrapper: WebSocketWrapper) => {
             wsWrapper.setOnMessage((event: MessageEvent) => {
                 const message = this.parseMessage(event);
-                if ( message.type == MessageType.CHECKIN_FAIL) {
-                    // TODO: set password back to null
+                if (message.type == MessageType.CHECKIN_FAIL) {
                     const targetLobby = this.localLobbies.getLobbies().find(lobby => lobby.login.name == message.lobbyLogin.name)!;
                     targetLobby.setPassword(null, false);
-                    //this.listeners.forEach(listener => listener(ServerStatus.FAIL));
-                } else if ( message.type == MessageType.DASHBOARD_DATA) {
+                    this.listeners.forEach(listener => listener(ServerStatus.FAIL));
+                } else if (message.type == MessageType.DASHBOARD_DATA) {
                     this.localLobbies.setLobbies(message.lobbies);
                     for (let lobby of this.localLobbies.getLobbies().filter(lobby => lobby.userIsAuthorizedToAccess())) {
-                        this.sendLobbyLevelAuthorizedMessage(MessageType.REQUESTING_DATA, lobby.login, []);
+                        // TODO: since DASHBOARD_DATA is also used if other users create/delete lobbies. test if this message is necessary to save time
+                        this.requestDataForLobby(lobby);
                     }
                 } else if (message.type == MessageType.DATA_DELIVERY) {
                     const targetLobby = this.localLobbies.getLobbies().find(lobby => lobby.login.name == message.lobbyLogin.name)!;
@@ -78,12 +76,12 @@ export class LobbyManagmentWebsocketHandler {
         this.listeners.push(listener);
     }
 
-    public addMessageListener(listener: (message: any) => void) {
-        this.messageListeners.push(listener);
-    }
-
     public sendLocalLobbyToServer(lobby: Lobby) {
         this.sendLobbyLevelAuthorizedMessage(MessageType.DATA_DELIVERY, lobby.login, lobby.getEntries().map(entry => entry.toSendable()));
+    }
+
+    public requestDataForLobby(lobby: Lobby) {
+        this.sendLobbyLevelAuthorizedMessage(MessageType.REQUESTING_DATA, lobby.login, []);
     }
 
     public askForAccessToLobby(lobby: Lobby, password: string) {

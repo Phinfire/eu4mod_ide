@@ -12,6 +12,10 @@ import { Login } from "./managment/ILogin";
 import { AbstractLocalisationUser } from "./model/localisation/AbstractLocalisationUser";
 import { parseLocalisationFile } from "./parse/parse";
 import { UIFactory } from "./UIFactory";
+import { SkanderbegVis } from "./managment/ui/SkanderbegVis";
+import { BuildingValueHelper } from "./ui/BuildingValueHelper";
+import { IdeasEditor } from "./managment/ui/IdeasEditor";
+import { COAEditor } from "./ck3/coa/COAEditor";
 
 const fetchPromises = ["common", "history"].map(key => fetch(Constants.WEBSERVER_URL + "game_" + key +".json").then(response => response.json()));
 
@@ -28,20 +32,6 @@ const gamePromise = Promise.all(fetchPromises
         console.error("Failed to fetch data", error);
         return new Game();
     });
-
-const tag2NamePromise = fetch(Constants.WEBSERVER_URL + "tag2name.json")
-    .then(response => response.json())
-    .then(tag2namejson => {
-        const map = new Map<string, string>();
-        for (let key of Object.keys(tag2namejson)) {
-            map.set(key, tag2namejson[key]);
-        }
-        return map;
-    })
-    .catch(error => {
-        console.error("Failed to fetch tag2name", error);
-        throw error;
-});
 /*
 const localisationPromise = fetch(Constants.WEBSERVER_URL + "game_localisation.json" + "?" + new Date().getUTCFullYear())
     .then(response => response.json())
@@ -58,16 +48,31 @@ const localisationPromise = fetch(Constants.WEBSERVER_URL + "game_localisation.j
             }
             bigLocalisationMap.set(language, locLookup);
         }
-        const t1 = performance.now();
-        console.log("Loading localisation: " + (t1 - t0) + " ms");
         return bigLocalisationMap;
     })
     .catch(error => {
         console.error("Failed to fetch localisation", error);
         return new Map<Language, Map<string, string>>();
     });
+
 */
-const localisationPromise = Promise.resolve(new Map<Language, Map<string, string>>()); 
+
+const localisationPromise = fetch(Constants.WEBSERVER_URL + "tag2name.json").then(response => response.json()).then(tag2namejson => {
+    const map = new Map<string, string>();
+    for (let key of Object.keys(tag2namejson)) {
+        map.set(key, tag2namejson[key]);
+    }
+    const loc = new Map<Language, Map<string, string>>();
+    loc.set(Language.ENGLISH, map);
+    return loc;
+});
+
+const discordPromise = Promise.resolve(new Discord()).then(discord => {
+    const imported = discord.importUsers();
+    return {discord: discord, imported: imported};
+}).then(({discord, imported}) => {
+    return discord;
+});
 
 async function setup() {
     const wrapper = document.createElement('div');
@@ -78,31 +83,15 @@ async function setup() {
     const localisationProvider = new LocalisationProvider();
     await localisationProvider.setLocalisations(localisationPromise);
     const guesser = new NationGuesser(localisationProvider);
-    const mep = new Map<string, () => ITabApp>();
-    const discord = new Discord();
-    //clear local storage
-    //localStorage.clear();
-    const go = (login: Login) => {
-        console.log("Logging in as " + login.name + ", " + login.password);
-        storeLogin(login);
-        discord.importUsers().then((users) => {
-            mep.set("Test", () => new LobbyManager(Constants.WEB_SOCKET_URL, login, game, discord, localisationProvider));
-            const wrapperObj = new AppWrapper(wrapper, mep);
-        });
-    };
-    if (hasLoginStored()) {
-        go(getLogin());
-    } else {
-        const popup = AppWrapper.getPopupContainer(false);
-        popup.popup.appendChild(UIFactory.fabricateInputButtonCombo(["You are?"], "Login", [false], [""], (values) => {
-            go(new Login(values[0], generatePassword()));
-            popup.exitFunction();
-        }));
-    }
-    //mep.set("Alliance Points", () => new AlliancePoints(Constants.WEB_SOCKET_URL, localisationProvider, guesser, game));
-    //"ws://localhost:8081/ws"
-    //mep.set("Map", () => new MapSelect(game));
-    //mep.set("Alliance Points", (div: HTMLDivElement) => new AlliancePoints("ws://localhost:8081/ws", localisationProvider, guesser, game, div));
+    const appNames2App = new Map<string, () => ITabApp>();
+    const discord = await discordPromise;
+    
+    appNames2App.set("COA", () => new COAEditor());
+    appNames2App.set("Ideas", () => new IdeasEditor(game, localisationProvider));
+    appNames2App.set("Building?", () => new BuildingValueHelper(game));
+    appNames2App.set("Skanderbeg", () => new SkanderbegVis(localisationProvider));
+    appNames2App.set("Lobby Managment", () => new LobbyManager(Constants.WEB_SOCKET_URL, game, discord, localisationProvider));
+    const wrapperObj = new AppWrapper(wrapper, appNames2App);
 }
 
 document.addEventListener('DOMContentLoaded', () => {

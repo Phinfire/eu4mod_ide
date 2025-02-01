@@ -74,6 +74,7 @@
 }
 
 .points-ui-input-combo {
+    font-size: var(--big-font-size);
     border: 1px solid var(--font-color);
 }
 

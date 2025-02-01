@@ -14,13 +14,13 @@ export class Nation implements INation {
 
     }
 
-    getImageUrl() {
+    getFlagImageUrl() {
         return Constants.getGfx("flags/" + this.tag + ".webp");
     }
     
     public makeImage() {
         const img = document.createElement("img");
-        img.src = this.getImageUrl();
+        img.src = this.getFlagImageUrl();
         img.loading = "lazy";
         return img;
     }

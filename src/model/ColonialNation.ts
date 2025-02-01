@@ -9,6 +9,10 @@ export class ColonialNation implements INation {
     constructor(private overlord: Nation, private region: ColonialRegion) {
 
     }
+    
+    getFlagImageUrl(): string {
+        throw new Error("Method not implemented.");
+    }
 
     makeImage(): HTMLImageElement {
         // image consists of the right half of the overlord's  flag and the left in the color of the region

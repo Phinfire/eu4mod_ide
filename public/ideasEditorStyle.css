@@ -1,0 +1,25 @@
+.ideas-editor-row {
+    display: flex;
+    flex-direction: row;
+    justify-content: flex-start;
+    align-items: center;
+    width: 600px;
+    font-size: var(--medium-font-size);
+}
+
+.ideas-editor-row > div {
+    user-select: none;
+}
+
+.ideas-editor-row-modifier-name {
+    display: flex;
+    flex-direction: row;
+    justify-content: flex-end;
+    text-align: right;
+    padding-right: calc(4 * var(--medium-font-size));
+}
+.ideas-editor-row-modifier-value {
+    display: flex;
+    flex-direction: row;
+    justify-content: flex-start;
+}

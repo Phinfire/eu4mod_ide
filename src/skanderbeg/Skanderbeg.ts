@@ -1,6 +1,10 @@
+import { SkanderNation } from "./SkanderNation";
+
 export class Skanderbeg {
 
     private provincesData: string | null;
+    
+    private fetchedDumps: Map<string, string> = new Map<string, any>();
 
     constructor(private readonly identifier: string) {
         this.provincesData = null;
@@ -18,18 +22,18 @@ export class Skanderbeg {
         return this.provincesData !== null;
     }
 
-    public async fetchProvincesData() {
-        if (this.hasProvincesData()) {
-            return Promise.resolve(this.provincesData!);
+    private async fetchData(key: string) {
+        if (!this.fetchedDumps.has(key)) {
+            console.log("https://skanderbeg.pm/api.php?scope=getSaveDataDump&save=" + this.identifier + "&type=" + key);
+            const data = await fetch("https://skanderbeg.pm/api.php?scope=getSaveDataDump&save=" + this.identifier + "&type=" + key).then(response => response.json());
+            this.fetchedDumps.set(key, data);
         }
-        const response = await fetch("https://skanderbeg.pm/api.php?scope=getSaveDataDump&save=" + this.identifier + "&type=provincesData");
-        this.provincesData = await response.text();
-        return this.provincesData;
+        return this.fetchedDumps.get(key)! as any;
     }
 
     public async getAllProvinceOwnerships() {
         const result = new Map<number, string>();
-        const data = await this.fetchProvincesData();
+        const data = await this.fetchData("provincesData");
         const parsed = JSON.parse(data);
         for (let key in parsed) {
             const province = parsed[key];
@@ -38,5 +42,11 @@ export class Skanderbeg {
             }
         }
         return result;
+    }
+
+    public async getPlayerSkanderNations() {
+        const rawData = await this.fetchData("countriesData");
+        const playerTags = Object.keys(rawData).filter(tag => rawData[tag].player != undefined);
+        return playerTags.map(tag => new SkanderNation(tag, rawData));
     }
 }

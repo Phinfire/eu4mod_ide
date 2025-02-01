@@ -14,13 +14,16 @@ export class OverrideNation implements INation {
 
     constructor(private tag: string, private name: string, private alias: string, private adjective: string, private ideas: NationalIdeaSet) {
     }
+    getFlagImageUrl(): string {
+        return Constants.getGfx("flags/" + this.tag + ".webp");
+    }
 
     getAlias(): string {
         return this.alias;
     }
 
     makeImage(): HTMLImageElement {
-        const url = Constants.getGfx("flags/" + this.tag + ".webp");
+        const url = this.getFlagImageUrl();
         const img = document.createElement("img");
         img.src = url;
         return img;

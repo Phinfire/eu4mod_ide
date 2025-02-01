@@ -16,4 +16,6 @@ export interface INation extends IHasImage, IHasLocalisableName {
     getIdeas(): NationalIdeaSet;
 
     getAlias(): string;
+
+    getFlagImageUrl(): string;
 }

@@ -5,9 +5,7 @@ import { AbstractLocalisationUser } from "./localisation/AbstractLocalisationUse
 export class Idea implements IHasImage {
 
     constructor(private localizationKey: string, private modifierAssignments: Map<string,string>) {
-        if (Array.from(modifierAssignments.keys()).map(k => k.toLowerCase()).join("").indexOf("directions") != -1) {
-            console.log("Idea with directions: " + localizationKey);
-        }
+        
     }
     
     getImageUrl(): string {

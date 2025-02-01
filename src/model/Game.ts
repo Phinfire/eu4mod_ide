@@ -3,11 +3,13 @@ import { parseParadoxFileContent } from "../parse/parse";
 import { PDXFileTreeNode } from "../parse/PdxTreeNode";
 import { RGB } from "../util/ImageUtil";
 import { ColonialRegion } from "./ColonialRegion";
+import { CustomIdeaCost } from "./CustomIdeaCost";
 import { Idea } from "./Idea";
 import { INation } from "./INation";
 import { Nation } from "./Nation";
 import { NationalIdeaSet } from "./NationalIdeaSet";
 import { Province } from "./Province";
+import { TradeGood } from "./TradeGood";
 
 export class Game {
 
@@ -20,7 +22,10 @@ export class Game {
     private tag2Color: Map<string, RGB> = new Map<string, RGB>();
     private tag2Alias: Map<string, string> = new Map<string, string>();
     
+    private tradeGoods: TradeGood[] = [];
     private provinces: Province[] = [];
+
+    private ideaKey2NationDesignerCost = new Map<string, CustomIdeaCost>();
 
     constructor() {
         
@@ -60,6 +65,33 @@ export class Game {
             this.tag2Color.set(left, new RGB(rgb[0], rgb[1], rgb[2]));
             this.tag2Alias.set(left, countryFileName.substring(0, countryFileName.length-4));
         });
+        const tradeGoodPrices = parseParadoxFileContent(common.prices["00_prices.txt"]);
+        const tradegoods = parseParadoxFileContent(common.tradegoods["00_tradegoods.txt"]); 
+        let i = 0;
+        for (const key of tradegoods.getChildren().keys()) {
+            const tradeGood = tradegoods.getChildren().get(key)!;
+            const color = tradeGood.getChildren().get("color")!.getValueLeaves().map(channel => Number.parseInt(channel));
+            const imageUrl = Constants.getAppGraphics("resources/resource_" + i + ".webp");
+            i++;
+            const price = parseFloat(tradeGoodPrices.getChildren().get(key)!.getKeyValueLeaves().get("base_price")![0]);
+            this.tradeGoods.push(new TradeGood(key, price, new RGB(color[0], color[1], color[2]), imageUrl));
+        }
+
+        const customIdeaFiles = common.custom_ideas;
+        for (const fileName of Object.keys(customIdeaFiles)) {
+            console.log("Processing " + fileName);
+            const content = parseParadoxFileContent(customIdeaFiles[fileName]);
+            const rootKey = content.getChildren().keys().next().value!;
+            if (rootKey === undefined) {
+                continue;
+            }
+            const root = content.getChildren().get(rootKey)!;
+            const category = root.getKeyValueLeaves().get("category")![0];
+            for (const key of root.getChildren().keys()) {
+                const entry = root.getChildren().get(key)!;
+            
+            }
+        }
     }
 
     public loadHistory(history: any, provinceId2TerrainType: Map<number, string>, provinceId2RGB: Map<number, RGB>) {
@@ -99,6 +131,7 @@ export class Game {
                 if (ideas != null) {
                     this.nations.push(new Nation(tag, this.tag2Alias.get(tag)!, ideas));
                 } else {
+                    this.nations.push(new Nation(tag, this.tag2Alias.get(tag)!, NationalIdeaSet.DUMMY));
                     //console.log("Could not find ideas for " + tag + " with primary culture " + primaryCulture);
                 }
             }
@@ -250,5 +283,9 @@ export class Game {
             }
         }
         return provinceColor2OwnerColor;
+    }
+
+    public getAllTradeGoods(includeGold: boolean = true, includeUnknown: boolean = true) {
+        return this.tradeGoods.filter(tradeGood => (includeGold || tradeGood.getName() != "gold") && (includeUnknown || tradeGood.getName() != "unknown"));
     }
 }

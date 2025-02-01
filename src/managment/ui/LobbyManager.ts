@@ -14,6 +14,9 @@ import { AlliancePoints } from "./AlliancePoints";
 
 export class LobbyManager implements ITabApp {
 
+    private static readonly NAME_KEY = "eu4-lobby-managment-user-name";
+    private static readonly PASSWORD_KEY = "eu4-lobby-managment-user-password";
+
     private panel: HTMLDivElement;
     private lobbiesPanel: HTMLDivElement;
     private system: LobbyRespository;
@@ -22,7 +25,8 @@ export class LobbyManager implements ITabApp {
     private alliancePointsInstance: AlliancePoints;
     private selectedLobby: Lobby | null = null;
 
-    constructor(socketUrl: string, login: Login, game: Game, discord: Discord, private locProvider: LocalisationProvider) {
+    constructor(socketUrl: string, game: Game, discord: Discord, private locProvider: LocalisationProvider) {
+        const login = this.getLogin();
         this.system = new LobbyRespository();
         this.socketHandler = new LobbyManagmentWebsocketHandler(socketUrl, this.system, login, game, discord);
         const locUser = new class extends AbstractLocalisationUser {};
@@ -32,7 +36,7 @@ export class LobbyManager implements ITabApp {
         });
         this.system.addStateChangeListener((lobbies) => {
             if (this.selectedLobby == null) {
-                this.displayLobbies(lobbies);
+                this.displayLobbies(this.system.getLobbies());
             } else {
                 for (let lobby of lobbies) {
                     if (this.selectedLobby == lobby) {
@@ -55,7 +59,19 @@ export class LobbyManager implements ITabApp {
         return this.selectedLobby == null ? this.panel : this.alliancePointsInstance.getPanel();
     }
 
-    displayLobbies(lobbies: Lobby[]) {
+    private getLogin() {
+        if (localStorage.getItem(LobbyManager.NAME_KEY) == null) {
+            const userName = Math.random().toString(36).substring(16);
+            const password = Math.random().toString(36).substring(7);
+            localStorage.setItem(LobbyManager.NAME_KEY, userName);
+            localStorage.setItem(LobbyManager.PASSWORD_KEY, password);
+        }
+        let name = localStorage.getItem(LobbyManager.NAME_KEY);
+        let password = localStorage.getItem(LobbyManager.PASSWORD_KEY);
+        return new Login(name!, password!);
+    }
+
+    private displayLobbies(lobbies: Lobby[]) {
         this.lobbiesPanel.innerHTML = "";
         lobbies.forEach(lobby => {
             this.lobbiesPanel.appendChild(this.fabricatePanelForLobby(lobby));
@@ -81,8 +97,8 @@ export class LobbyManager implements ITabApp {
     private selectLobby(lobby: Lobby | null) {
         this.selectedLobby = lobby;
         if (lobby != null) {
-            this.panel.appendChild(this.alliancePointsInstance.getPanel());
             this.panel.removeChild(this.lobbiesPanel);
+            this.panel.appendChild(this.alliancePointsInstance.getPanel());
             this.alliancePointsInstance.displayLobby(lobby);
         } else {
             this.panel.removeChild(this.alliancePointsInstance.getPanel());
@@ -111,9 +127,9 @@ export class LobbyManager implements ITabApp {
             thinking.style.fontSize = "calc(2 * var(--big-font-size))";
             thinking.style.margin = "auto";
         } else {
-            const passwordRow = this.fabricateLobbyPanelTableRow("Password", lobby.login.password ? lobby.login.password : UIFactory.HIDDEN, true);
-            const skanderbegRow = this.fabricateLobbyPanelTableRow("Skanderbeg", lobby.hasSkanderbegIdentifier() ? lobby.getAssociatedSkanderbegIdentifier() : "-", false);
-            const playersRow = this.fabricateLobbyPanelTableRow("Players", lobby.userIsAuthorizedToAccess() ? lobby.getCachedNumberOfEntries().toString()  : "?", false);
+            const passwordRow = UIFactory.fabricateLobbyPanelTableRow("Password", lobby.login.password ? lobby.login.password : UIFactory.HIDDEN, true);
+            const skanderbegRow = UIFactory.fabricateLobbyPanelTableRow("Skanderbeg", lobby.hasSkanderbegIdentifier() ? lobby.getAssociatedSkanderbegIdentifier() : "-", false);
+            const playersRow = UIFactory.fabricateLobbyPanelTableRow("Players", lobby.userIsAuthorizedToAccess() ? lobby.getCachedNumberOfEntries().toString()  : "?", false);
             [passwordRow, skanderbegRow, playersRow].forEach(row => table.appendChild(row));
             skanderbegRow.style.cursor = "pointer";
             skanderbegRow.onclick = () => {
@@ -131,33 +147,11 @@ export class LobbyManager implements ITabApp {
         return wrapper;
     }
 
-    private fabricateLobbyPanelTableRow(label: string, value: string, secret: boolean) {
-        const row = document.createElement('tr');
-        const cell1 = document.createElement('td');
-        const cell2 = document.createElement('td');
-        cell1.style.textAlign = "right";
-        cell1.style.paddingRight = "40px";
-        cell2.style.width = "50%";
-        row.appendChild(cell1);
-        row.appendChild(cell2);
-        cell1.innerHTML = label + ":";
-        cell2.innerHTML = secret ? UIFactory.HIDDEN : value;
-        if (secret) {
-            cell2.onmouseenter = () => {
-                cell2.innerHTML = value;
-            }
-            cell2.onmouseleave = () => {
-                cell2.innerHTML = UIFactory.HIDDEN;
-            }
-        }
-        return row;
-    }
-
     private fabricateSideBarForLobby(lobby: Lobby) {
         const sidebar = document.createElement('div');
         sidebar.classList.add("lobby-sidebar"); 
         if (lobby.userIsAuthorizedToAccess()) {
-            const symbols = ["📂", "+"];
+            const symbols = ["📂", "⧉", UIFactory.RED_X];
             const actions = [
                 () => {
                     this.selectLobby(lobby);
@@ -167,6 +161,9 @@ export class LobbyManager implements ITabApp {
                     lobby.addChild(child);
                     child.setEntries(lobby.getEntries().map(entry => entry.clone()));
                     this.system.addLobby(child);
+                },
+                () => {
+                    // TODO: ask for confirmation
                 }
             ];
             for (let i = 0; i < symbols.length; i++) {

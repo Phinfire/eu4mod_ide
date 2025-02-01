@@ -1,8 +1,4 @@
-import { ITabApp } from "../ui/ITabApp";
 import { Lobby } from "./lobbies/Lobby";
-import { WebSocketWrapper } from "./WebsocketWrapper";
-
-
 
 export class LobbyRespository {
 
@@ -20,7 +16,6 @@ export class LobbyRespository {
     }
 
     public unlockLobby(lobby: Lobby, password: string) {
-        console.log("Unlocking lobby " + lobby.login.name);
         lobby.setPassword(password, true);
         this.listeners.forEach(listener => listener([lobby]));
     }
